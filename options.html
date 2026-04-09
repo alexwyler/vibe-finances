@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Financial Institution Scraper Options</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Financial Institution Scraper Options</h1>
+        <p>Set credentials and choose which fields each module should scrape.</p>
+      </header>
+
+      <div id="security-note" class="note">
+        This scaffold stores credentials in extension local storage and restricts access to trusted extension contexts.
+        Add passphrase-based encryption before using it for daily personal finance work.
+      </div>
+
+      <form id="options-form">
+        <section id="modules"></section>
+        <footer class="footer">
+          <button type="submit">Save options</button>
+          <span id="save-status"></span>
+        </footer>
+      </form>
+    </main>
+
+    <template id="module-template">
+      <article class="module-card">
+        <div class="module-header">
+          <div>
+            <h2 class="module-name"></h2>
+            <p class="module-description"></p>
+          </div>
+          <label class="inline-toggle">
+            <input class="module-enabled" type="checkbox">
+            <span>Enabled</span>
+          </label>
+        </div>
+
+        <div class="credentials-grid">
+          <label>
+            Username or email
+            <input class="credential-username" type="text" autocomplete="off">
+          </label>
+          <label>
+            Password
+            <input class="credential-password" type="password" autocomplete="new-password">
+          </label>
+        </div>
+
+        <div class="extractor-list"></div>
+      </article>
+    </template>
+
+    <template id="extractor-template">
+      <div class="extractor-row">
+        <label class="inline-toggle">
+          <input class="extractor-enabled" type="checkbox">
+          <span class="extractor-name"></span>
+        </label>
+        <label>
+          Display label
+          <input class="extractor-label" type="text">
+        </label>
+      </div>
+    </template>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

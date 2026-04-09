@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Financial Institution Scraper",
+  "version": "0.1.0",
+  "description": "Log into supported financial institutions and scrape configured values into a side panel.",
+  "permissions": ["storage", "scripting", "tabs", "sidePanel"],
+  "host_permissions": [
+    "https://www.northwesternmutual.com/*",
+    "https://login.northwesternmutual.com/*",
+    "https://plan.northwesternmutual.com/*",
+    "https://www.wealthfront.com/*",
+    "https://cdn.wealthfront.com/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "options_page": "options.html",
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Financial Institution Scraper"
+  }
+}

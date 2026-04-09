@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Financial Institution Scraper</title>
+    <link rel="stylesheet" href="sidepanel.css">
+  </head>
+  <body>
+    <header class="toolbar">
+      <div>
+        <h1>Financial Institution Scraper</h1>
+        <p class="subtitle">Run your institution modules and review the latest scraped values.</p>
+      </div>
+      <div class="toolbar-actions">
+        <button id="open-options" class="secondary">Options</button>
+        <button id="run-all">Run all</button>
+      </div>
+    </header>
+
+    <main>
+      <div id="status" class="status"></div>
+      <section id="modules" class="module-list"></section>
+    </main>
+
+    <template id="module-template">
+      <article class="module-card">
+        <div class="module-card-header">
+          <div>
+            <h2 class="module-name"></h2>
+            <p class="module-meta"></p>
+          </div>
+          <button class="run-module">Run</button>
+        </div>
+        <div class="module-state"></div>
+        <div class="module-results"></div>
+      </article>
+    </template>
+
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>

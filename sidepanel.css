@@ -1,0 +1,138 @@
+:root {
+  color-scheme: light dark;
+  font-family: Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+  background: #f5f7fb;
+  color: #1b2330;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.toolbar h1 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+
+.subtitle {
+  margin: 0;
+  color: #526076;
+  font-size: 13px;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: #1f5eff;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #dfe7ff;
+  color: #17348f;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.status {
+  min-height: 20px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #526076;
+}
+
+.module-list {
+  display: grid;
+  gap: 12px;
+}
+
+.module-card {
+  background: white;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.module-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.module-name {
+  margin: 0;
+  font-size: 17px;
+}
+
+.module-meta,
+.module-state {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #526076;
+}
+
+.module-results {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.result-item {
+  border: 1px solid #e1e7f0;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fafcff;
+}
+
+.result-label {
+  font-size: 12px;
+  color: #526076;
+  margin-bottom: 4px;
+}
+
+.result-value {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.result-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.result-list li {
+  margin-bottom: 6px;
+}
+
+.muted {
+  color: #6c7a90;
+}
+
+.ok {
+  color: #0a7a36;
+}
+
+.error {
+  color: #b42318;
+}
