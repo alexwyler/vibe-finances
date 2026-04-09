@@ -3,6 +3,7 @@ import { MODULES } from './lib/modules.js';
 const modulesContainer = document.getElementById('modules');
 const moduleTemplate = document.getElementById('module-template');
 const statusElement = document.getElementById('status');
+const globalSummaryElement = document.getElementById('global-summary');
 const runAllButton = document.getElementById('run-all');
 const openOptionsButton = document.getElementById('open-options');
 
@@ -36,10 +37,157 @@ function summarizeValue(result) {
 }
 
 function formatListItem(item) {
-  return Object.entries(item)
-    .filter(([, value]) => Boolean(value))
-    .map(([key, value]) => `${key}: ${value}`)
+  if (!item) {
+    return 'No details';
+  }
+
+  if (item.category && item.amount) {
+    return item.detail ? `${item.category}: ${item.amount} (${item.detail})` : `${item.category}: ${item.amount}`;
+  }
+
+  if (item.policy && item.value) {
+    return item.account ? `${item.policy}: ${item.value} (${item.account})` : `${item.policy}: ${item.value}`;
+  }
+
+  return Object.values(item)
+    .filter(Boolean)
     .join(' | ');
+}
+
+function getExtractorPageMap(module) {
+  const pageMap = new Map();
+  for (const page of module.pages) {
+    for (const extractor of page.extractors) {
+      pageMap.set(extractor.id, page.id);
+    }
+  }
+  return pageMap;
+}
+
+function sumCurrencyResults(results = {}) {
+  return Object.values(results).reduce((sum, result) => {
+    if (result?.type === 'currency' && typeof result.valueNumber === 'number' && !Number.isNaN(result.valueNumber)) {
+      return sum + result.valueNumber;
+    }
+    return sum;
+  }, 0);
+}
+
+function createSummaryItem(labelText, valueText) {
+  const item = document.createElement('section');
+  item.className = 'result-item summary-item';
+
+  const label = document.createElement('div');
+  label.className = 'result-label';
+  label.textContent = labelText;
+  item.appendChild(label);
+
+  const value = document.createElement('div');
+  value.className = 'result-value';
+  value.textContent = valueText || 'No value';
+  item.appendChild(value);
+
+  return item;
+}
+
+function collectPageResults(module, moduleResult, pageId) {
+  if (!moduleResult?.values) {
+    return {};
+  }
+
+  const extractorPageMap = getExtractorPageMap(module);
+  const pageResults = {};
+  for (const [extractorId, result] of Object.entries(moduleResult.values)) {
+    if (extractorPageMap.get(extractorId) === pageId) {
+      pageResults[extractorId] = result;
+    }
+  }
+
+  return pageResults;
+}
+
+function collectNetWorthResults(module, moduleResult) {
+  if (!moduleResult?.values) {
+    return {};
+  }
+
+  const extractorPageMap = getExtractorPageMap(module);
+  const results = {};
+
+  for (const [extractorId, result] of Object.entries(moduleResult.values)) {
+    const pageId = extractorPageMap.get(extractorId);
+    if (pageId !== 'cashflow' && result?.type === 'currency') {
+      results[extractorId] = result;
+    }
+  }
+
+  return results;
+}
+
+function getCashflowTotals(cashflowResults = {}) {
+  return {
+    income: typeof cashflowResults.cashflowIncome?.valueNumber === 'number'
+      ? cashflowResults.cashflowIncome.valueNumber
+      : 0,
+    fixed: typeof cashflowResults.cashflowFixed?.valueNumber === 'number'
+      ? cashflowResults.cashflowFixed.valueNumber
+      : 0,
+    discretionary: typeof cashflowResults.cashflowDiscretionary?.valueNumber === 'number'
+      ? cashflowResults.cashflowDiscretionary.valueNumber
+      : 0
+  };
+}
+
+function renderGlobalSummary(state) {
+  globalSummaryElement.replaceChildren();
+
+  let netWorthTotal = 0;
+  let hasNetWorth = false;
+  let totalIncome = 0;
+  let totalFixed = 0;
+  let totalDiscretionary = 0;
+  let hasCashflowData = false;
+
+  for (const module of MODULES) {
+    const moduleResult = state.results?.[module.id];
+    const netWorthResults = collectNetWorthResults(module, moduleResult);
+    const cashflowResults = collectPageResults(module, moduleResult, 'cashflow');
+
+    if (Object.keys(netWorthResults).length) {
+      netWorthTotal += sumCurrencyResults(netWorthResults);
+      hasNetWorth = true;
+    }
+
+    const cashflowTotals = getCashflowTotals(cashflowResults);
+    if (cashflowTotals.income || cashflowTotals.fixed || cashflowTotals.discretionary) {
+      totalIncome += cashflowTotals.income;
+      totalFixed += cashflowTotals.fixed;
+      totalDiscretionary += cashflowTotals.discretionary;
+      hasCashflowData = true;
+    }
+  }
+
+  if (hasNetWorth) {
+    globalSummaryElement.appendChild(
+      createSummaryItem(
+        'Net worth summary',
+        new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(netWorthTotal)
+      )
+    );
+  }
+
+  if (hasCashflowData) {
+    globalSummaryElement.appendChild(
+      createSummaryItem(
+        'Net cash flow summary',
+        new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
+          totalIncome - totalFixed - totalDiscretionary
+        )
+      )
+    );
+  }
+
+  globalSummaryElement.classList.toggle('is-empty', !globalSummaryElement.children.length);
 }
 
 function renderModuleCard(module, state) {
@@ -112,16 +260,6 @@ function renderModuleCard(module, state) {
       item.appendChild(list);
     }
 
-    if (result?.meta && Object.keys(result.meta).length) {
-      const metaText = document.createElement('div');
-      metaText.className = 'module-state muted';
-      metaText.textContent = Object.entries(result.meta)
-        .filter(([, entry]) => Boolean(entry))
-        .map(([key, entry]) => `${key}: ${entry}`)
-        .join(' | ');
-      item.appendChild(metaText);
-    }
-
     resultsContainer.appendChild(item);
   }
 
@@ -144,6 +282,7 @@ async function refresh() {
 
   const state = response.state;
   modulesContainer.replaceChildren();
+  renderGlobalSummary(state);
   for (const module of MODULES) {
     modulesContainer.appendChild(renderModuleCard(module, state));
   }

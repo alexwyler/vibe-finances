@@ -28,25 +28,7 @@ export default {
           tableSelector: 'table[data-test-id="product-table-investments"]',
           rowSelector: 'tbody tr',
           rowMatch: { textIncludes: ['Individual'] },
-          valueSelector: 'td.text-right dt',
-          meta: {
-            titleSelector: 'dt.luna-type-data-20',
-            accountSelector: 'dd.luna-type-data-10'
-          }
-        },
-        {
-          id: 'adjustableComplifePolicies',
-          label: 'Adjustable CompLife actual values',
-          kind: 'tableRowsList',
-          tableSelector: 'table[data-test-id="product-table-life-insurance"]',
-          rowSelector: 'tbody tr',
-          rowMatch: { textIncludes: ['ADJUSTABLE COMPLIFE'] },
-          fields: {
-            policy: 'dt.luna-type-data-20',
-            account: 'dd.luna-type-data-10',
-            value: 'td.text-right dt',
-            asOf: 'td.text-right dd'
-          }
+          valueSelector: 'td.text-right dt'
         },
         {
           id: 'adjustableComplifeTotal',
@@ -64,11 +46,7 @@ export default {
           tableSelector: 'table[data-test-id="product-table-bank-accounts"]',
           rowSelector: 'tbody tr',
           rowMatch: { textIncludes: ['Wells Fargo', 'Checking'] },
-          valueSelector: 'td.text-right dt',
-          meta: {
-            titleSelector: 'dt.luna-type-data-20',
-            accountSelector: 'dd.luna-type-data-10'
-          }
+          valueSelector: 'td.text-right dt'
         }
       ]
     },
@@ -77,29 +55,46 @@ export default {
       label: 'Cash Flow',
       url: 'https://plan.northwesternmutual.com/cashflow',
       waitFor: {
-        selector: '[data-test-id="spending-categories-header"], [data-test-id="high-chart-donut-chart"], #Spending-selector',
+        selector: '[data-test-id="month-selection-money-container"], [data-test-id="month-selection-spending-container"]',
         timeoutMs: 20000,
         settleMs: 1200
       },
       extractors: [
         {
-          id: 'cashflowHeading',
-          label: 'Cashflow heading',
-          kind: 'text',
-          selector: 'h2.luna-responsive_type-header_section, h2'
+          id: 'cashflowIncome',
+          label: 'Income',
+          kind: 'labeledCardValue',
+          itemSelector: 'button[data-test-id="month-selection-money-container"]',
+          labelSelector: '.luna-tag--content',
+          labelMatch: 'Income',
+          valueSelector: 'h1'
         },
         {
-          id: 'cashflowMode',
-          label: 'Cashflow selected mode',
-          kind: 'text',
-          selector: '#Spending-selector input:checked + label'
+          id: 'cashflowDiscretionary',
+          label: 'Discretionary',
+          kind: 'labeledCardValue',
+          itemSelector: 'button[data-test-id="month-selection-money-container"]',
+          labelSelector: '.luna-tag--content',
+          labelMatch: 'Discretionary',
+          valueSelector: 'h1'
         },
         {
-          id: 'cashflowTotalLabel',
-          label: 'Cashflow total label',
-          kind: 'attribute',
-          selector: '[data-test-id="high-chart-donut-chart"] svg',
-          attribute: 'aria-label'
+          id: 'cashflowFixed',
+          label: 'Fixed',
+          kind: 'labeledCardValue',
+          itemSelector: 'button[data-test-id="month-selection-money-container"]',
+          labelSelector: '.luna-tag--content',
+          labelMatch: 'Fixed',
+          valueSelector: 'h1'
+        },
+        {
+          id: 'cashflowNet',
+          label: 'Net cash flow',
+          kind: 'labeledCardValue',
+          itemSelector: '[data-test-id="month-selection-spending-container"]',
+          labelSelector: 'p.luna-type-header-10, p',
+          valueSelector: 'p.luna-type-header-55, p',
+          labelFallback: 'Net cash flow'
         },
         {
           id: 'cashflowBreakdown',
