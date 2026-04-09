@@ -1,23 +1,43 @@
 import { MODULES, getModuleById } from './lib/modules.js';
-import { ensureState, getState, saveState, updateResult } from './lib/storage.js';
+import { appendHistorySnapshot, ensureState, getState, saveState, updateResult, updateResults } from './lib/storage.js';
 import { runModule } from './lib/runner.js';
 
-async function runModuleAndPersist(moduleId) {
+async function runModuleAndPersist(moduleId, { saveSnapshot = true, preserveTabOnFailure = false } = {}) {
   const state = await getState();
   const module = getModuleById(moduleId);
   if (!module) {
     throw new Error(`Unknown module: ${moduleId}`);
   }
 
-  const result = await runModule(module, state.modules[moduleId]);
+  const result = await runModule(module, state.modules[moduleId], { preserveTabOnFailure });
   await updateResult(moduleId, result);
+  if (result?.ok && saveSnapshot) {
+    await appendHistorySnapshot();
+  }
   return result;
 }
 
 async function runAllModulesAndPersist() {
+  const state = await getState();
   const output = {};
-  for (const module of MODULES) {
-    output[module.id] = await runModuleAndPersist(module.id);
+
+  const moduleRuns = await Promise.all(
+    MODULES.map(async (module) => {
+      const result = await runModule(module, state.modules[module.id]);
+      return [module.id, result];
+    })
+  );
+
+  let hasSuccessfulRun = false;
+  for (const [moduleId, result] of moduleRuns) {
+    output[moduleId] = result;
+    hasSuccessfulRun = hasSuccessfulRun || Boolean(result?.ok);
+  }
+
+  await updateResults(output);
+
+  if (hasSuccessfulRun) {
+    await appendHistorySnapshot();
   }
   return output;
 }
@@ -71,7 +91,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
       case 'RUN_MODULE': {
-        const result = await runModuleAndPersist(message.moduleId);
+        const result = await runModuleAndPersist(message.moduleId, {
+          preserveTabOnFailure: message.preserveTabOnFailure === true
+        });
         sendResponse({ ok: true, result });
         return;
       }

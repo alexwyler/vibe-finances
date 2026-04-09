@@ -1,11 +1,48 @@
 import { MODULES } from './lib/modules.js';
+import { computeGlobalMetrics } from './lib/metrics.js';
 
 const modulesContainer = document.getElementById('modules');
-const moduleTemplate = document.getElementById('module-template');
 const statusElement = document.getElementById('status');
+const moduleActionsElement = document.getElementById('module-actions');
 const globalSummaryElement = document.getElementById('global-summary');
 const runAllButton = document.getElementById('run-all');
 const openOptionsButton = document.getElementById('open-options');
+
+const SECTION_DEFINITIONS = [
+  {
+    id: 'investments-insurance',
+    title: 'Brokerage + Life Insurance',
+    entryIds: [
+      'wealthfrontBrokerage',
+      'schwabTotalValue',
+      'brokerageIndividual',
+      'adjustableComplifeTotal'
+    ]
+  },
+  {
+    id: 'bank-spending',
+    title: 'Bank + Spending',
+    entryIds: [
+      'wellsFargoChecking',
+      'cashflowIncome',
+      'cashflowFixed',
+      'cashflowDiscretionary',
+      'cashflowBreakdown'
+    ]
+  }
+];
+
+const DISPLAY_LABELS = {
+  wealthfrontBrokerage: 'Wealthfront brokerage account',
+  schwabTotalValue: 'Schwab brokerage account',
+  brokerageIndividual: 'Northwestern brokerage account',
+  adjustableComplifeTotal: 'Life insurance',
+  wellsFargoChecking: 'Wells Fargo Checking',
+  cashflowIncome: 'Monthly Income',
+  cashflowFixed: 'Monthly Fixed',
+  cashflowDiscretionary: 'Monthly Discretionary',
+  cashflowBreakdown: 'Discretionary Spending Breakdown'
+};
 
 function setStatus(message, className = '') {
   statusElement.textContent = message || '';
@@ -54,26 +91,49 @@ function formatListItem(item) {
     .join(' | ');
 }
 
-function getExtractorPageMap(module) {
-  const pageMap = new Map();
-  for (const page of module.pages) {
-    for (const extractor of page.extractors) {
-      pageMap.set(extractor.id, page.id);
-    }
+function formatCurrency(value) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0);
+}
+
+function formatDelta(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return 'No history';
   }
-  return pageMap;
+
+  const prefix = value >= 0 ? '+' : '-';
+  return `${prefix}${formatCurrency(Math.abs(value))}`;
 }
 
-function sumCurrencyResults(results = {}) {
-  return Object.values(results).reduce((sum, result) => {
-    if (result?.type === 'currency' && typeof result.valueNumber === 'number' && !Number.isNaN(result.valueNumber)) {
-      return sum + result.valueNumber;
-    }
-    return sum;
-  }, 0);
+function getInterpolatedMetricValue(snapshots, metricKey, targetTimestamp) {
+  const sorted = [...snapshots].sort((a, b) => a.timestamp - b.timestamp);
+  const withMetric = sorted.filter((snapshot) => typeof snapshot.metrics?.[metricKey] === 'number');
+
+  if (!withMetric.length) {
+    return null;
+  }
+
+  const exact = withMetric.find((snapshot) => snapshot.timestamp === targetTimestamp);
+  if (exact) {
+    return exact.metrics[metricKey];
+  }
+
+  const before = [...withMetric].reverse().find((snapshot) => snapshot.timestamp < targetTimestamp);
+  const after = withMetric.find((snapshot) => snapshot.timestamp > targetTimestamp);
+
+  if (!before || !after) {
+    return null;
+  }
+
+  const totalWindow = after.timestamp - before.timestamp;
+  if (totalWindow <= 0) {
+    return before.metrics[metricKey];
+  }
+
+  const progress = (targetTimestamp - before.timestamp) / totalWindow;
+  return before.metrics[metricKey] + ((after.metrics[metricKey] - before.metrics[metricKey]) * progress);
 }
 
-function createSummaryItem(labelText, valueText) {
+function createSummaryCard(labelText, currentValue, dailyChange, monthlyChange) {
   const item = document.createElement('section');
   item.className = 'result-item summary-item';
 
@@ -84,10 +144,115 @@ function createSummaryItem(labelText, valueText) {
 
   const value = document.createElement('div');
   value.className = 'result-value';
-  value.textContent = valueText || 'No value';
+  value.textContent = formatCurrency(currentValue);
   item.appendChild(value);
 
+  const changeRow = document.createElement('div');
+  changeRow.className = 'summary-change-row';
+  changeRow.innerHTML = `
+    <span class="summary-change-pill">1D ${formatDelta(dailyChange)}</span>
+    <span class="summary-change-pill">1M ${formatDelta(monthlyChange)}</span>
+  `;
+  item.appendChild(changeRow);
+
   return item;
+}
+
+function createBreakdownChip(itemData) {
+  const chip = document.createElement('li');
+  chip.className = 'breakdown-chip';
+
+  const category = document.createElement('span');
+  category.className = 'breakdown-chip-category';
+  category.textContent = itemData?.category || 'Category';
+  chip.appendChild(category);
+
+  const amount = document.createElement('span');
+  amount.className = 'breakdown-chip-amount';
+  amount.textContent = itemData?.amount || '';
+  chip.appendChild(amount);
+
+  if (itemData?.detail) {
+    const detail = document.createElement('span');
+    detail.className = 'breakdown-chip-detail';
+    detail.textContent = itemData.detail;
+    chip.appendChild(detail);
+  }
+
+  return chip;
+}
+
+function createSectionCard(title) {
+  const card = document.createElement('article');
+  card.className = 'module-card';
+
+  const heading = document.createElement('h2');
+  heading.className = 'module-name';
+  heading.textContent = title;
+  card.appendChild(heading);
+
+  const results = document.createElement('div');
+  results.className = 'module-results';
+  card.appendChild(results);
+
+  return { card, results };
+}
+
+async function runSingleModule(moduleId, button) {
+  const module = MODULES.find((candidate) => candidate.id === moduleId);
+  button.disabled = true;
+  setStatus(`Running ${module?.displayName || moduleId}...`);
+
+  const response = await chrome.runtime.sendMessage({
+    type: 'RUN_MODULE',
+    moduleId,
+    preserveTabOnFailure: true
+  });
+
+  button.disabled = false;
+
+  if (!response?.ok) {
+    setStatus(response?.error || `Failed to run ${module?.displayName || moduleId}.`, 'error');
+    return;
+  }
+
+  if (!response.result?.ok) {
+    const debugHint = response.result?.debugTabKeptOpen ? ' Debug tab left open.' : '';
+    setStatus(
+      response.result?.error || `${module?.displayName || moduleId} failed.${debugHint}`,
+      'error'
+    );
+    await refresh();
+    return;
+  }
+
+  setStatus(`Finished ${module?.displayName || moduleId}.`, 'ok');
+  await refresh();
+}
+
+function renderModuleActions(state) {
+  moduleActionsElement.replaceChildren();
+
+  for (const module of MODULES) {
+    if (!state.modules?.[module.id]?.enabled) {
+      continue;
+    }
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'module-action-button';
+    button.textContent = `Run ${module.displayName}`;
+    button.addEventListener('click', () => {
+      runSingleModule(module.id, button).catch((error) => {
+        button.disabled = false;
+        setStatus(String(error), 'error');
+      });
+    });
+
+    moduleActionsElement.appendChild(button);
+  }
+
+  moduleActionsElement.classList.toggle('is-empty', !moduleActionsElement.children.length);
 }
 
 function collectPageResults(module, moduleResult, pageId) {
@@ -140,137 +305,133 @@ function getCashflowTotals(cashflowResults = {}) {
 
 function renderGlobalSummary(state) {
   globalSummaryElement.replaceChildren();
+  const metrics = computeGlobalMetrics(state);
+  const snapshots = state.history?.snapshots || [];
+  const now = Date.now();
+  const oneDayAgo = now - (24 * 60 * 60 * 1000);
+  const oneMonthAgo = now - (30 * 24 * 60 * 60 * 1000);
 
-  let netWorthTotal = 0;
-  let hasNetWorth = false;
-  let totalIncome = 0;
-  let totalFixed = 0;
-  let totalDiscretionary = 0;
-  let hasCashflowData = false;
+  const netWorthDaily = getInterpolatedMetricValue(snapshots, 'netWorth', oneDayAgo);
+  const netWorthMonthly = getInterpolatedMetricValue(snapshots, 'netWorth', oneMonthAgo);
+  const cashflowDaily = getInterpolatedMetricValue(snapshots, 'netCashflow', oneDayAgo);
+  const cashflowMonthly = getInterpolatedMetricValue(snapshots, 'netCashflow', oneMonthAgo);
 
-  for (const module of MODULES) {
-    const moduleResult = state.results?.[module.id];
-    const netWorthResults = collectNetWorthResults(module, moduleResult);
-    const cashflowResults = collectPageResults(module, moduleResult, 'cashflow');
+  globalSummaryElement.appendChild(
+    createSummaryCard(
+      'Net worth',
+      metrics.netWorth,
+      netWorthDaily === null ? null : metrics.netWorth - netWorthDaily,
+      netWorthMonthly === null ? null : metrics.netWorth - netWorthMonthly
+    )
+  );
 
-    if (Object.keys(netWorthResults).length) {
-      netWorthTotal += sumCurrencyResults(netWorthResults);
-      hasNetWorth = true;
-    }
-
-    const cashflowTotals = getCashflowTotals(cashflowResults);
-    if (cashflowTotals.income || cashflowTotals.fixed || cashflowTotals.discretionary) {
-      totalIncome += cashflowTotals.income;
-      totalFixed += cashflowTotals.fixed;
-      totalDiscretionary += cashflowTotals.discretionary;
-      hasCashflowData = true;
-    }
-  }
-
-  if (hasNetWorth) {
-    globalSummaryElement.appendChild(
-      createSummaryItem(
-        'Net worth summary',
-        new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(netWorthTotal)
-      )
-    );
-  }
-
-  if (hasCashflowData) {
-    globalSummaryElement.appendChild(
-      createSummaryItem(
-        'Net cash flow summary',
-        new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
-          totalIncome - totalFixed - totalDiscretionary
-        )
-      )
-    );
-  }
+  globalSummaryElement.appendChild(
+    createSummaryCard(
+      'Monthly Cash Flow',
+      metrics.netCashflow,
+      cashflowDaily === null ? null : metrics.netCashflow - cashflowDaily,
+      cashflowMonthly === null ? null : metrics.netCashflow - cashflowMonthly
+    )
+  );
 
   globalSummaryElement.classList.toggle('is-empty', !globalSummaryElement.children.length);
 }
 
-function renderModuleCard(module, state) {
-  const fragment = moduleTemplate.content.cloneNode(true);
-  const root = fragment.querySelector('.module-card');
-  const name = fragment.querySelector('.module-name');
-  const meta = fragment.querySelector('.module-meta');
-  const stateEl = fragment.querySelector('.module-state');
-  const runButton = fragment.querySelector('.run-module');
-  const resultsContainer = fragment.querySelector('.module-results');
+function collectDisplayEntries(state) {
+  const entries = new Map();
 
-  const moduleState = state.modules[module.id];
-  const moduleResult = state.results?.[module.id];
-
-  name.textContent = module.displayName;
-  meta.textContent = moduleState?.enabled ? 'Enabled' : 'Disabled';
-  stateEl.textContent = moduleResult?.lastRunAt
-    ? `Last run: ${new Date(moduleResult.lastRunAt).toLocaleString()}`
-    : 'Not run yet';
-  stateEl.classList.toggle('ok', Boolean(moduleResult?.ok));
-  stateEl.classList.toggle('error', moduleResult?.ok === false);
-
-  runButton.addEventListener('click', async () => {
-    runButton.disabled = true;
-    setStatus(`Running ${module.displayName}...`);
-    const response = await chrome.runtime.sendMessage({ type: 'RUN_MODULE', moduleId: module.id });
-    runButton.disabled = false;
-
-    if (!response?.ok) {
-      setStatus(response?.error || 'Run failed.', 'error');
-      return;
-    }
-
-    setStatus(`Finished ${module.displayName}.`, response.result?.ok ? 'ok' : 'error');
-    await refresh();
-  });
-
-  const extractorState = moduleState?.extractorConfig || {};
-  const extractorOrder = module.pages.flatMap((page) => page.extractors);
-  for (const extractor of extractorOrder) {
-    if (extractorState[extractor.id]?.enabled === false) {
+  for (const module of MODULES) {
+    const moduleState = state.modules[module.id];
+    if (!moduleState?.enabled) {
       continue;
     }
 
-    const result = moduleResult?.values?.[extractor.id];
-    const item = document.createElement('section');
-    item.className = 'result-item';
+    const extractorState = moduleState.extractorConfig || {};
+    for (const page of module.pages) {
+      for (const extractor of page.extractors) {
+        if (extractorState[extractor.id]?.enabled === false) {
+          continue;
+        }
 
-    const label = document.createElement('div');
-    label.className = 'result-label';
-    label.textContent = extractorState[extractor.id]?.label || extractor.label;
-    item.appendChild(label);
+        if (!Object.prototype.hasOwnProperty.call(DISPLAY_LABELS, extractor.id)) {
+          continue;
+        }
 
-    const value = document.createElement('div');
-    value.className = 'result-value';
-    value.textContent = summarizeValue(result);
-    if (result?.type === 'error') {
-      value.classList.add('error');
-    }
-    item.appendChild(value);
-
-    if (result?.type === 'list' && Array.isArray(result.items)) {
-      const list = document.createElement('ul');
-      list.className = 'result-list';
-      for (const listItem of result.items) {
-        const li = document.createElement('li');
-        li.textContent = formatListItem(listItem);
-        list.appendChild(li);
+        const result = state.results?.[module.id]?.values?.[extractor.id];
+        entries.set(extractor.id, {
+          id: extractor.id,
+          label: DISPLAY_LABELS[extractor.id],
+          result
+        });
       }
-      item.appendChild(list);
+    }
+  }
+
+  return entries;
+}
+
+function renderDisplayItem(entry) {
+  const item = document.createElement('section');
+  item.className = 'result-item';
+
+  const label = document.createElement('div');
+  label.className = 'result-label';
+  label.textContent = entry.label;
+  item.appendChild(label);
+
+  const value = document.createElement('div');
+  value.className = 'result-value';
+  value.textContent = summarizeValue(entry.result);
+  if (entry.result?.type === 'error') {
+    value.classList.add('error');
+  }
+  item.appendChild(value);
+
+  if (entry.id === 'cashflowBreakdown' && entry.result?.type === 'list' && Array.isArray(entry.result.items)) {
+    const list = document.createElement('ul');
+    list.className = 'breakdown-chip-list';
+    for (const breakdownItem of entry.result.items) {
+      list.appendChild(createBreakdownChip(breakdownItem));
+    }
+    item.appendChild(list);
+    return item;
+  }
+
+  if (entry.result?.type === 'list' && Array.isArray(entry.result.items)) {
+    const list = document.createElement('ul');
+    list.className = 'result-list';
+    for (const listItem of entry.result.items) {
+      const li = document.createElement('li');
+      li.textContent = formatListItem(listItem);
+      list.appendChild(li);
+    }
+    item.appendChild(list);
+  }
+
+  return item;
+}
+
+function renderGroupedSections(state) {
+  const entries = collectDisplayEntries(state);
+
+  for (const sectionDefinition of SECTION_DEFINITIONS) {
+    const { card, results } = createSectionCard(sectionDefinition.title);
+    for (const entryId of sectionDefinition.entryIds) {
+      const entry = entries.get(entryId);
+      if (entry) {
+        results.appendChild(renderDisplayItem(entry));
+      }
     }
 
-    resultsContainer.appendChild(item);
-  }
+    if (!results.children.length) {
+      const empty = document.createElement('div');
+      empty.className = 'module-state muted';
+      empty.textContent = 'No results yet.';
+      results.appendChild(empty);
+    }
 
-  if (!resultsContainer.children.length) {
-    const empty = document.createElement('div');
-    empty.className = 'module-state muted';
-    empty.textContent = 'No enabled extractors or no results yet.';
-    resultsContainer.appendChild(empty);
+    modulesContainer.appendChild(card);
   }
-
-  return root;
 }
 
 async function refresh() {
@@ -282,10 +443,9 @@ async function refresh() {
 
   const state = response.state;
   modulesContainer.replaceChildren();
+  renderModuleActions(state);
   renderGlobalSummary(state);
-  for (const module of MODULES) {
-    modulesContainer.appendChild(renderModuleCard(module, state));
-  }
+  renderGroupedSections(state);
 }
 
 runAllButton.addEventListener('click', async () => {

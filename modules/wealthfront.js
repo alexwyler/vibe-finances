@@ -30,16 +30,6 @@ export default {
           meta: {
             titleSelector: '[data-toolkit-component="Text"]'
           }
-        },
-        {
-          id: 'schwabBrokerage',
-          label: 'Schwab brokerage account value',
-          kind: 'listItemByTextValue',
-          rootSelector: '[data-testid="dashboard-account-balances"]',
-          itemSelector: 'li.tk-list-item-wrapper, button',
-          textIncludes: ['Schwab'],
-          titleSelector: '[data-testid="external-account-title"]',
-          valueSelector: '.tk-list-inner-content-right-column > div:first-child'
         }
       ]
     }

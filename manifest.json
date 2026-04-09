@@ -8,6 +8,9 @@
     "https://www.northwesternmutual.com/*",
     "https://login.northwesternmutual.com/*",
     "https://plan.northwesternmutual.com/*",
+    "https://www.schwab.com/*",
+    "https://client.schwab.com/*",
+    "https://sws-gateway-nr.schwab.com/*",
     "https://www.wealthfront.com/*",
     "https://cdn.wealthfront.com/*"
   ],
