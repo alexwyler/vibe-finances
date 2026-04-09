@@ -1,9 +1,15 @@
 import { MODULES } from './lib/modules.js';
-import { computeGlobalMetrics } from './lib/metrics.js';
+import {
+  computeGlobalMetricDetails,
+  computeHistoricalMetrics,
+  getEffectiveExtractorResult,
+  getInterpolatedExtractorValue
+} from './lib/metrics.js';
 
 const modulesContainer = document.getElementById('modules');
 const statusElement = document.getElementById('status');
 const globalSummaryElement = document.getElementById('global-summary');
+const staleNoteElement = document.getElementById('stale-note');
 const runAllButton = document.getElementById('run-all');
 const runMenuToggleButton = document.getElementById('run-menu-toggle');
 const runMenuListElement = document.getElementById('run-menu-list');
@@ -44,6 +50,12 @@ const DISPLAY_LABELS = {
   cashflowDiscretionary: 'Monthly Discretionary',
   cashflowBreakdown: 'Discretionary Spending Breakdown'
 };
+
+const MONTHLY_ONLY_ENTRY_IDS = new Set([
+  'cashflowIncome',
+  'cashflowFixed',
+  'cashflowDiscretionary'
+]);
 
 function setStatus(message, className = '') {
   statusElement.textContent = message || '';
@@ -105,46 +117,60 @@ function formatDelta(value) {
   return `${prefix}${formatCurrency(Math.abs(value))}`;
 }
 
-function getInterpolatedMetricValue(snapshots, metricKey, targetTimestamp) {
-  const sorted = [...snapshots].sort((a, b) => a.timestamp - b.timestamp);
-  const withMetric = sorted.filter((snapshot) => typeof snapshot.metrics?.[metricKey] === 'number');
-
-  if (!withMetric.length) {
-    return null;
+function formatCompactCurrency(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return 'No history';
   }
 
-  if (withMetric.length === 1) {
-    return withMetric[0].timestamp === targetTimestamp ? withMetric[0].metrics[metricKey] : null;
+  const absolute = Math.abs(value);
+  const prefix = value >= 0 ? '+' : '-';
+
+  if (absolute < 1000) {
+    return `${prefix}${formatCurrency(Math.round(absolute))}`;
   }
 
-  const exact = withMetric.find((snapshot) => snapshot.timestamp === targetTimestamp);
-  if (exact) {
-    return exact.metrics[metricKey];
+  const units = [
+    { threshold: 1e9, suffix: 'b' },
+    { threshold: 1e6, suffix: 'm' },
+    { threshold: 1e3, suffix: 'k' }
+  ];
+
+  for (const unit of units) {
+    if (absolute >= unit.threshold) {
+      const scaled = absolute / unit.threshold;
+      const digits = scaled >= 100 ? 0 : 1;
+      const rounded = Number(scaled.toFixed(digits));
+      return `${prefix}$${rounded}${unit.suffix}`;
+    }
   }
 
-  let before = [...withMetric].reverse().find((snapshot) => snapshot.timestamp < targetTimestamp);
-  let after = withMetric.find((snapshot) => snapshot.timestamp > targetTimestamp);
-
-  if (!before && targetTimestamp < withMetric[0].timestamp) {
-    [before, after] = withMetric.slice(0, 2);
-  } else if (!after && targetTimestamp > withMetric[withMetric.length - 1].timestamp) {
-    [before, after] = withMetric.slice(-2);
-  }
-
-  if (!before || !after) {
-    return null;
-  }
-
-  const totalWindow = after.timestamp - before.timestamp;
-  if (totalWindow <= 0) {
-    return before.metrics[metricKey];
-  }
-
-  const progress = (targetTimestamp - before.timestamp) / totalWindow;
-  return before.metrics[metricKey] + ((after.metrics[metricKey] - before.metrics[metricKey]) * progress);
+  return `${prefix}${formatCurrency(absolute)}`;
 }
 
-function createSummaryCard(labelText, currentValue, dailyChange, monthlyChange) {
+function createChangeRow(dailyChange, monthlyChange, options = {}) {
+  const showDaily = options.showDaily !== false;
+  const showMonthly = options.showMonthly !== false;
+  const changeRow = document.createElement('div');
+  changeRow.className = 'summary-change-row';
+
+  if (showDaily) {
+    const dailyPill = document.createElement('span');
+    dailyPill.className = 'summary-change-pill';
+    dailyPill.textContent = `1D ${formatCompactCurrency(dailyChange)}`;
+    changeRow.appendChild(dailyPill);
+  }
+
+  if (showMonthly) {
+    const monthlyPill = document.createElement('span');
+    monthlyPill.className = 'summary-change-pill';
+    monthlyPill.textContent = `1M ${formatCompactCurrency(monthlyChange)}`;
+    changeRow.appendChild(monthlyPill);
+  }
+
+  return changeRow;
+}
+
+function createSummaryCard(labelText, currentValue, dailyChange, monthlyChange, isStale = false, options = {}) {
   const item = document.createElement('section');
   item.className = 'result-item summary-item';
 
@@ -155,16 +181,10 @@ function createSummaryCard(labelText, currentValue, dailyChange, monthlyChange) 
 
   const value = document.createElement('div');
   value.className = 'result-value';
-  value.textContent = formatCurrency(currentValue);
+  value.textContent = `${formatCurrency(currentValue)}${isStale ? '*' : ''}`;
   item.appendChild(value);
 
-  const changeRow = document.createElement('div');
-  changeRow.className = 'summary-change-row';
-  changeRow.innerHTML = `
-    <span class="summary-change-pill">1D ${formatDelta(dailyChange)}</span>
-    <span class="summary-change-pill">1M ${formatDelta(monthlyChange)}</span>
-  `;
-  item.appendChild(changeRow);
+  item.appendChild(createChangeRow(dailyChange, monthlyChange, options));
 
   return item;
 }
@@ -296,86 +316,38 @@ function renderRunMenu(state) {
   }
 }
 
-function collectPageResults(module, moduleResult, pageId) {
-  if (!moduleResult?.values) {
-    return {};
-  }
-
-  const extractorPageMap = getExtractorPageMap(module);
-  const pageResults = {};
-  for (const [extractorId, result] of Object.entries(moduleResult.values)) {
-    if (extractorPageMap.get(extractorId) === pageId) {
-      pageResults[extractorId] = result;
-    }
-  }
-
-  return pageResults;
-}
-
-function collectNetWorthResults(module, moduleResult) {
-  if (!moduleResult?.values) {
-    return {};
-  }
-
-  const extractorPageMap = getExtractorPageMap(module);
-  const results = {};
-
-  for (const [extractorId, result] of Object.entries(moduleResult.values)) {
-    const pageId = extractorPageMap.get(extractorId);
-    if (pageId !== 'cashflow' && result?.type === 'currency') {
-      results[extractorId] = result;
-    }
-  }
-
-  return results;
-}
-
-function getCashflowTotals(cashflowResults = {}) {
-  return {
-    income: typeof cashflowResults.cashflowIncome?.valueNumber === 'number'
-      ? cashflowResults.cashflowIncome.valueNumber
-      : 0,
-    fixed: typeof cashflowResults.cashflowFixed?.valueNumber === 'number'
-      ? cashflowResults.cashflowFixed.valueNumber
-      : 0,
-    discretionary: typeof cashflowResults.cashflowDiscretionary?.valueNumber === 'number'
-      ? cashflowResults.cashflowDiscretionary.valueNumber
-      : 0
-  };
-}
-
 function renderGlobalSummary(state) {
   globalSummaryElement.replaceChildren();
-  const metrics = computeGlobalMetrics(state);
-  const snapshots = state.history?.snapshots || [];
+  const metricDetails = computeGlobalMetricDetails(state);
   const now = Date.now();
   const oneDayAgo = now - (24 * 60 * 60 * 1000);
   const oneMonthAgo = now - (30 * 24 * 60 * 60 * 1000);
-
-  const netWorthDaily = getInterpolatedMetricValue(snapshots, 'netWorth', oneDayAgo);
-  const netWorthMonthly = getInterpolatedMetricValue(snapshots, 'netWorth', oneMonthAgo);
-  const cashflowDaily = getInterpolatedMetricValue(snapshots, 'netCashflow', oneDayAgo);
-  const cashflowMonthly = getInterpolatedMetricValue(snapshots, 'netCashflow', oneMonthAgo);
+  const dailyMetrics = computeHistoricalMetrics(state, oneDayAgo);
+  const monthlyMetrics = computeHistoricalMetrics(state, oneMonthAgo);
 
   globalSummaryElement.appendChild(
     createSummaryCard(
       'Net worth',
-      metrics.netWorth,
-      netWorthDaily === null ? null : metrics.netWorth - netWorthDaily,
-      netWorthMonthly === null ? null : metrics.netWorth - netWorthMonthly
+      metricDetails.netWorth.value,
+      dailyMetrics.netWorth === null ? null : metricDetails.netWorth.value - dailyMetrics.netWorth,
+      monthlyMetrics.netWorth === null ? null : metricDetails.netWorth.value - monthlyMetrics.netWorth,
+      metricDetails.netWorth.isStale
     )
   );
 
   globalSummaryElement.appendChild(
     createSummaryCard(
       'Monthly Cash Flow',
-      metrics.netCashflow,
-      cashflowDaily === null ? null : metrics.netCashflow - cashflowDaily,
-      cashflowMonthly === null ? null : metrics.netCashflow - cashflowMonthly
+      metricDetails.netCashflow.value,
+      dailyMetrics.netCashflow === null ? null : metricDetails.netCashflow.value - dailyMetrics.netCashflow,
+      monthlyMetrics.netCashflow === null ? null : metricDetails.netCashflow.value - monthlyMetrics.netCashflow,
+      metricDetails.netCashflow.isStale,
+      { showDaily: false }
     )
   );
 
   globalSummaryElement.classList.toggle('is-empty', !globalSummaryElement.children.length);
+  return metricDetails.netWorth.isStale || metricDetails.netCashflow.isStale;
 }
 
 function getPageUrlByExtractorId(module, extractorId) {
@@ -390,6 +362,9 @@ function getPageUrlByExtractorId(module, extractorId) {
 
 function collectDisplayEntries(state) {
   const entries = new Map();
+  const now = Date.now();
+  const oneDayAgo = now - (24 * 60 * 60 * 1000);
+  const oneMonthAgo = now - (30 * 24 * 60 * 60 * 1000);
 
   for (const module of MODULES) {
     const moduleState = state.modules[module.id];
@@ -408,11 +383,14 @@ function collectDisplayEntries(state) {
           continue;
         }
 
-        const result = state.results?.[module.id]?.values?.[extractor.id];
+        const { result, isStale } = getEffectiveExtractorResult(state, module.id, extractor.id);
         entries.set(extractor.id, {
           id: extractor.id,
           label: DISPLAY_LABELS[extractor.id],
           result,
+          isStale,
+          dailyHistoricalValue: getInterpolatedExtractorValue(state, extractor.id, oneDayAgo),
+          monthlyHistoricalValue: getInterpolatedExtractorValue(state, extractor.id, oneMonthAgo),
           sourceUrl: getPageUrlByExtractorId(module, extractor.id),
           sourceModuleName: module.displayName
         });
@@ -436,7 +414,7 @@ function renderDisplayItem(entry) {
   const canOpenSource = Boolean(entry.sourceUrl) && entry.result?.type !== 'error';
   const value = document.createElement(canOpenSource ? 'button' : 'div');
   value.className = canOpenSource ? 'result-value result-value-link' : 'result-value';
-  value.textContent = valueText;
+  value.textContent = `${valueText}${entry.isStale && valueText !== 'No value' ? '*' : ''}`;
 
   if (canOpenSource) {
     value.type = 'button';
@@ -451,6 +429,20 @@ function renderDisplayItem(entry) {
   }
 
   item.appendChild(value);
+
+  if (entry.result?.type === 'currency' && typeof entry.result.valueNumber === 'number' && !Number.isNaN(entry.result.valueNumber)) {
+    const dailyChange = typeof entry.dailyHistoricalValue === 'number'
+      ? entry.result.valueNumber - entry.dailyHistoricalValue
+      : null;
+    const monthlyChange = typeof entry.monthlyHistoricalValue === 'number'
+      ? entry.result.valueNumber - entry.monthlyHistoricalValue
+      : null;
+    item.appendChild(
+      createChangeRow(dailyChange, monthlyChange, {
+        showDaily: !MONTHLY_ONLY_ENTRY_IDS.has(entry.id)
+      })
+    );
+  }
 
   if (entry.id === 'cashflowBreakdown' && entry.result?.type === 'list' && Array.isArray(entry.result.items)) {
     const list = document.createElement('ul');
@@ -476,14 +468,15 @@ function renderDisplayItem(entry) {
   return item;
 }
 
-function renderGroupedSections(state) {
-  const entries = collectDisplayEntries(state);
+function renderGroupedSections(entries) {
+  let hasStaleValues = false;
 
   for (const sectionDefinition of SECTION_DEFINITIONS) {
     const { card, results } = createSectionCard(sectionDefinition.title);
     for (const entryId of sectionDefinition.entryIds) {
       const entry = entries.get(entryId);
       if (entry) {
+        hasStaleValues = hasStaleValues || entry.isStale;
         results.appendChild(renderDisplayItem(entry));
       }
     }
@@ -497,6 +490,19 @@ function renderGroupedSections(state) {
 
     modulesContainer.appendChild(card);
   }
+
+  return hasStaleValues;
+}
+
+function renderStaleNote(show) {
+  if (!show) {
+    staleNoteElement.hidden = true;
+    staleNoteElement.textContent = '';
+    return;
+  }
+
+  staleNoteElement.hidden = false;
+  staleNoteElement.textContent = 'Values marked * use the latest saved scrape result and may be out of date.';
 }
 
 async function refresh() {
@@ -508,9 +514,11 @@ async function refresh() {
 
   const state = response.state;
   modulesContainer.replaceChildren();
+  const entries = collectDisplayEntries(state);
   renderRunMenu(state);
-  renderGlobalSummary(state);
-  renderGroupedSections(state);
+  const hasStaleSummary = renderGlobalSummary(state);
+  const hasStaleValues = renderGroupedSections(entries);
+  renderStaleNote(hasStaleSummary || hasStaleValues);
 }
 
 runAllButton.addEventListener('click', async () => {
