@@ -3,9 +3,10 @@ import { computeGlobalMetrics } from './lib/metrics.js';
 
 const modulesContainer = document.getElementById('modules');
 const statusElement = document.getElementById('status');
-const moduleActionsElement = document.getElementById('module-actions');
 const globalSummaryElement = document.getElementById('global-summary');
 const runAllButton = document.getElementById('run-all');
+const runMenuToggleButton = document.getElementById('run-menu-toggle');
+const runMenuListElement = document.getElementById('run-menu-list');
 const openOptionsButton = document.getElementById('open-options');
 
 const SECTION_DEFINITIONS = [
@@ -112,13 +113,23 @@ function getInterpolatedMetricValue(snapshots, metricKey, targetTimestamp) {
     return null;
   }
 
+  if (withMetric.length === 1) {
+    return withMetric[0].timestamp === targetTimestamp ? withMetric[0].metrics[metricKey] : null;
+  }
+
   const exact = withMetric.find((snapshot) => snapshot.timestamp === targetTimestamp);
   if (exact) {
     return exact.metrics[metricKey];
   }
 
-  const before = [...withMetric].reverse().find((snapshot) => snapshot.timestamp < targetTimestamp);
-  const after = withMetric.find((snapshot) => snapshot.timestamp > targetTimestamp);
+  let before = [...withMetric].reverse().find((snapshot) => snapshot.timestamp < targetTimestamp);
+  let after = withMetric.find((snapshot) => snapshot.timestamp > targetTimestamp);
+
+  if (!before && targetTimestamp < withMetric[0].timestamp) {
+    [before, after] = withMetric.slice(0, 2);
+  } else if (!after && targetTimestamp > withMetric[withMetric.length - 1].timestamp) {
+    [before, after] = withMetric.slice(-2);
+  }
 
   if (!before || !after) {
     return null;
@@ -201,6 +212,7 @@ function createSectionCard(title) {
 async function runSingleModule(moduleId, button) {
   const module = MODULES.find((candidate) => candidate.id === moduleId);
   button.disabled = true;
+  closeRunMenu();
   setStatus(`Running ${module?.displayName || moduleId}...`);
 
   const response = await chrome.runtime.sendMessage({
@@ -230,8 +242,38 @@ async function runSingleModule(moduleId, button) {
   await refresh();
 }
 
-function renderModuleActions(state) {
-  moduleActionsElement.replaceChildren();
+function closeRunMenu() {
+  runMenuListElement.hidden = true;
+  runMenuToggleButton.setAttribute('aria-expanded', 'false');
+}
+
+function openRunMenu() {
+  runMenuListElement.hidden = false;
+  runMenuToggleButton.setAttribute('aria-expanded', 'true');
+}
+
+function toggleRunMenu() {
+  if (runMenuListElement.hidden) {
+    openRunMenu();
+    return;
+  }
+
+  closeRunMenu();
+}
+
+function renderRunMenu(state) {
+  runMenuListElement.replaceChildren();
+
+  const runAllItem = document.createElement('button');
+  runAllItem.type = 'button';
+  runAllItem.className = 'run-menu-item';
+  runAllItem.textContent = 'Run all';
+  runAllItem.setAttribute('role', 'menuitem');
+  runAllItem.addEventListener('click', () => {
+    closeRunMenu();
+    runAllButton.click();
+  });
+  runMenuListElement.appendChild(runAllItem);
 
   for (const module of MODULES) {
     if (!state.modules?.[module.id]?.enabled) {
@@ -240,8 +282,9 @@ function renderModuleActions(state) {
 
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'module-action-button';
+    button.className = 'run-menu-item';
     button.textContent = `Run ${module.displayName}`;
+    button.setAttribute('role', 'menuitem');
     button.addEventListener('click', () => {
       runSingleModule(module.id, button).catch((error) => {
         button.disabled = false;
@@ -249,10 +292,8 @@ function renderModuleActions(state) {
       });
     });
 
-    moduleActionsElement.appendChild(button);
+    runMenuListElement.appendChild(button);
   }
-
-  moduleActionsElement.classList.toggle('is-empty', !moduleActionsElement.children.length);
 }
 
 function collectPageResults(module, moduleResult, pageId) {
@@ -337,6 +378,16 @@ function renderGlobalSummary(state) {
   globalSummaryElement.classList.toggle('is-empty', !globalSummaryElement.children.length);
 }
 
+function getPageUrlByExtractorId(module, extractorId) {
+  for (const page of module.pages) {
+    if (page.extractors.some((extractor) => extractor.id === extractorId)) {
+      return page.url;
+    }
+  }
+
+  return '';
+}
+
 function collectDisplayEntries(state) {
   const entries = new Map();
 
@@ -361,7 +412,9 @@ function collectDisplayEntries(state) {
         entries.set(extractor.id, {
           id: extractor.id,
           label: DISPLAY_LABELS[extractor.id],
-          result
+          result,
+          sourceUrl: getPageUrlByExtractorId(module, extractor.id),
+          sourceModuleName: module.displayName
         });
       }
     }
@@ -379,12 +432,24 @@ function renderDisplayItem(entry) {
   label.textContent = entry.label;
   item.appendChild(label);
 
-  const value = document.createElement('div');
-  value.className = 'result-value';
-  value.textContent = summarizeValue(entry.result);
+  const valueText = summarizeValue(entry.result);
+  const canOpenSource = Boolean(entry.sourceUrl) && entry.result?.type !== 'error';
+  const value = document.createElement(canOpenSource ? 'button' : 'div');
+  value.className = canOpenSource ? 'result-value result-value-link' : 'result-value';
+  value.textContent = valueText;
+
+  if (canOpenSource) {
+    value.type = 'button';
+    value.title = `Open ${entry.sourceModuleName}`;
+    value.addEventListener('click', async () => {
+      await chrome.tabs.create({ url: entry.sourceUrl });
+    });
+  }
+
   if (entry.result?.type === 'error') {
     value.classList.add('error');
   }
+
   item.appendChild(value);
 
   if (entry.id === 'cashflowBreakdown' && entry.result?.type === 'list' && Array.isArray(entry.result.items)) {
@@ -443,13 +508,14 @@ async function refresh() {
 
   const state = response.state;
   modulesContainer.replaceChildren();
-  renderModuleActions(state);
+  renderRunMenu(state);
   renderGlobalSummary(state);
   renderGroupedSections(state);
 }
 
 runAllButton.addEventListener('click', async () => {
   runAllButton.disabled = true;
+  closeRunMenu();
   setStatus('Running all enabled modules...');
   const response = await chrome.runtime.sendMessage({ type: 'RUN_ALL' });
   runAllButton.disabled = false;
@@ -465,6 +531,23 @@ runAllButton.addEventListener('click', async () => {
 
 openOptionsButton.addEventListener('click', () => {
   chrome.runtime.openOptionsPage();
+});
+
+runMenuToggleButton.addEventListener('click', (event) => {
+  event.stopPropagation();
+  toggleRunMenu();
+});
+
+document.addEventListener('click', (event) => {
+  if (!event.target.closest('.run-menu')) {
+    closeRunMenu();
+  }
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    closeRunMenu();
+  }
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {

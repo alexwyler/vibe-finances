@@ -13,13 +13,25 @@
       </div>
       <div class="toolbar-actions">
         <button id="open-options" class="secondary">Options</button>
-        <button id="run-all">Run all</button>
+        <div class="run-menu">
+          <button id="run-all">Run</button>
+          <button
+            id="run-menu-toggle"
+            class="run-menu-toggle"
+            type="button"
+            aria-label="Open run menu"
+            aria-haspopup="menu"
+            aria-expanded="false"
+          >
+            <span aria-hidden="true">▾</span>
+          </button>
+          <div id="run-menu-list" class="run-menu-list" role="menu" hidden></div>
+        </div>
       </div>
     </header>
 
     <main>
       <div id="status" class="status"></div>
-      <section id="module-actions" class="module-actions"></section>
       <section id="global-summary" class="module-summary-grid global-summary"></section>
       <section id="modules" class="module-list"></section>
     </main>
