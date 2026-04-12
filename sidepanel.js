@@ -14,6 +14,10 @@ const runAllButton = document.getElementById('run-all');
 const runMenuToggleButton = document.getElementById('run-menu-toggle');
 const runMenuListElement = document.getElementById('run-menu-list');
 const openOptionsButton = document.getElementById('open-options');
+const blurValuesToggle = document.getElementById('blur-values-toggle');
+const blurValuesIcon = document.getElementById('blur-values-icon');
+
+const BLUR_VALUES_STORAGE_KEY = 'blurValuesEnabled';
 
 const SECTION_DEFINITIONS = [
   {
@@ -57,9 +61,40 @@ const MONTHLY_ONLY_ENTRY_IDS = new Set([
   'cashflowDiscretionary'
 ]);
 
+const LOCKED_ICON = `
+  <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M17 10h-1V7a4 4 0 1 0-8 0v3H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2Zm-7-3a2 2 0 1 1 4 0v3h-4V7Zm7 12H7v-7h10v7Z" fill="currentColor"/>
+  </svg>
+`;
+
+const UNLOCKED_ICON = `
+  <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M17 10h-5V7a2 2 0 1 1 4 0h2a4 4 0 1 0-8 0v3H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2Zm0 9H7v-7h10v7Z" fill="currentColor"/>
+  </svg>
+`;
+
 function setStatus(message, className = '') {
   statusElement.textContent = message || '';
   statusElement.className = `status ${className}`.trim();
+}
+
+function setBlurValuesEnabled(enabled) {
+  document.body.classList.toggle('values-blurred', enabled);
+  blurValuesToggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+  blurValuesToggle.setAttribute('aria-label', enabled ? 'Show values' : 'Blur values');
+  blurValuesToggle.title = enabled ? 'Show values' : 'Blur values';
+  blurValuesIcon.innerHTML = enabled ? LOCKED_ICON : UNLOCKED_ICON;
+  localStorage.setItem(BLUR_VALUES_STORAGE_KEY, enabled ? 'true' : 'false');
+}
+
+function initializeBlurValuesToggle() {
+  const savedValue = localStorage.getItem(BLUR_VALUES_STORAGE_KEY);
+  setBlurValuesEnabled(savedValue === 'true');
+
+  blurValuesToggle.addEventListener('click', () => {
+    const nextEnabled = blurValuesToggle.getAttribute('aria-pressed') !== 'true';
+    setBlurValuesEnabled(nextEnabled);
+  });
 }
 
 function summarizeValue(result) {
@@ -287,7 +322,7 @@ function renderRunMenu(state) {
   const runAllItem = document.createElement('button');
   runAllItem.type = 'button';
   runAllItem.className = 'run-menu-item';
-  runAllItem.textContent = 'Run all';
+  runAllItem.textContent = 'All';
   runAllItem.setAttribute('role', 'menuitem');
   runAllItem.addEventListener('click', () => {
     closeRunMenu();
@@ -303,7 +338,7 @@ function renderRunMenu(state) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'run-menu-item';
-    button.textContent = `Run ${module.displayName}`;
+    button.textContent = module.displayName;
     button.setAttribute('role', 'menuitem');
     button.addEventListener('click', () => {
       runSingleModule(module.id, button).catch((error) => {
@@ -564,4 +599,5 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
 });
 
+initializeBlurValuesToggle();
 refresh().catch((error) => setStatus(String(error), 'error'));
