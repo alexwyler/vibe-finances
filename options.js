@@ -1,4 +1,5 @@
 import { MODULES } from './lib/modules.js';
+import { getDefaultExtractorLabel } from './lib/displayLabels.js';
 
 const modulesContainer = document.getElementById('modules');
 const moduleTemplate = document.getElementById('module-template');
@@ -28,9 +29,10 @@ function renderModule(module, state) {
       const extractorFragment = extractorTemplate.content.cloneNode(true);
       const row = extractorFragment.querySelector('.extractor-row');
       row.dataset.extractorId = extractor.id;
-      extractorFragment.querySelector('.extractor-name').textContent = `${page.label}: ${extractor.label}`;
+      const defaultLabel = getDefaultExtractorLabel(extractor);
+      extractorFragment.querySelector('.extractor-name').textContent = `${page.label}: ${defaultLabel}`;
       extractorFragment.querySelector('.extractor-enabled').checked = state.extractorConfig?.[extractor.id]?.enabled !== false;
-      extractorFragment.querySelector('.extractor-label').value = state.extractorConfig?.[extractor.id]?.label || extractor.label;
+      extractorFragment.querySelector('.extractor-label').value = state.extractorConfig?.[extractor.id]?.label || defaultLabel;
       extractorList.appendChild(extractorFragment);
     }
   }
@@ -59,9 +61,10 @@ function collectState() {
     const extractorConfig = {};
 
     root.querySelectorAll('.extractor-row').forEach((row) => {
+      const extractor = module.pages.flatMap((page) => page.extractors).find((candidate) => candidate.id === row.dataset.extractorId);
       extractorConfig[row.dataset.extractorId] = {
         enabled: row.querySelector('.extractor-enabled').checked,
-        label: row.querySelector('.extractor-label').value.trim() || row.querySelector('.extractor-name').textContent
+        label: row.querySelector('.extractor-label').value.trim() || getDefaultExtractorLabel(extractor)
       };
     });
 

@@ -1,4 +1,5 @@
 import { MODULES } from './lib/modules.js';
+import { getDefaultExtractorLabel } from './lib/displayLabels.js';
 import {
   computeGlobalMetricDetails,
   computeHistoricalMetrics,
@@ -22,12 +23,13 @@ const BLUR_VALUES_STORAGE_KEY = 'blurValuesEnabled';
 const SECTION_DEFINITIONS = [
   {
     id: 'investments-insurance',
-    title: 'Brokerage + Life Insurance',
+    title: 'Investments',
     entryIds: [
       'wealthfrontBrokerage',
       'schwabTotalValue',
       'brokerageIndividual',
-      'adjustableComplifeTotal'
+      'adjustableComplifeTotal',
+      'bofaAutoLoan'
     ]
   },
   {
@@ -42,18 +44,6 @@ const SECTION_DEFINITIONS = [
     ]
   }
 ];
-
-const DISPLAY_LABELS = {
-  wealthfrontBrokerage: 'Wealthfront brokerage account',
-  schwabTotalValue: 'Schwab brokerage account',
-  brokerageIndividual: 'Northwestern brokerage account',
-  adjustableComplifeTotal: 'Life insurance',
-  wellsFargoChecking: 'Wells Fargo Checking',
-  cashflowIncome: 'Monthly Income',
-  cashflowFixed: 'Monthly Fixed',
-  cashflowDiscretionary: 'Monthly Discretionary',
-  cashflowBreakdown: 'Discretionary Spending Breakdown'
-};
 
 const MONTHLY_ONLY_ENTRY_IDS = new Set([
   'cashflowIncome',
@@ -141,6 +131,10 @@ function formatListItem(item) {
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0);
+}
+
+function getDisplayMultiplier(extractor) {
+  return typeof extractor.netWorthMultiplier === 'number' ? extractor.netWorthMultiplier : 1;
 }
 
 function formatDelta(value) {
@@ -414,16 +408,18 @@ function collectDisplayEntries(state) {
           continue;
         }
 
-        if (!Object.prototype.hasOwnProperty.call(DISPLAY_LABELS, extractor.id)) {
+        if (!SECTION_DEFINITIONS.some((section) => section.entryIds.includes(extractor.id))) {
           continue;
         }
 
         const { result, isStale } = getEffectiveExtractorResult(state, module.id, extractor.id);
+        const displayMultiplier = getDisplayMultiplier(extractor);
         entries.set(extractor.id, {
           id: extractor.id,
-          label: DISPLAY_LABELS[extractor.id],
+          label: moduleState.extractorConfig?.[extractor.id]?.label || getDefaultExtractorLabel(extractor),
           result,
           isStale,
+          displayMultiplier,
           dailyHistoricalValue: getInterpolatedExtractorValue(state, extractor.id, oneDayAgo),
           monthlyHistoricalValue: getInterpolatedExtractorValue(state, extractor.id, oneMonthAgo),
           sourceUrl: getPageUrlByExtractorId(module, extractor.id),
@@ -445,7 +441,12 @@ function renderDisplayItem(entry) {
   label.textContent = entry.label;
   item.appendChild(label);
 
-  const valueText = summarizeValue(entry.result);
+  const signedValueNumber = entry.result?.type === 'currency' && typeof entry.result.valueNumber === 'number'
+    ? entry.result.valueNumber * (entry.displayMultiplier || 1)
+    : null;
+  const valueText = signedValueNumber === null
+    ? summarizeValue(entry.result)
+    : formatCurrency(signedValueNumber);
   const canOpenSource = Boolean(entry.sourceUrl) && entry.result?.type !== 'error';
   const value = document.createElement(canOpenSource ? 'button' : 'div');
   value.className = canOpenSource ? 'result-value result-value-link' : 'result-value';
@@ -465,12 +466,18 @@ function renderDisplayItem(entry) {
 
   item.appendChild(value);
 
-  if (entry.result?.type === 'currency' && typeof entry.result.valueNumber === 'number' && !Number.isNaN(entry.result.valueNumber)) {
+  if (entry.result?.type === 'currency' && typeof signedValueNumber === 'number' && !Number.isNaN(signedValueNumber)) {
+    const signedDailyHistoricalValue = typeof entry.dailyHistoricalValue === 'number'
+      ? entry.dailyHistoricalValue * (entry.displayMultiplier || 1)
+      : null;
+    const signedMonthlyHistoricalValue = typeof entry.monthlyHistoricalValue === 'number'
+      ? entry.monthlyHistoricalValue * (entry.displayMultiplier || 1)
+      : null;
     const dailyChange = typeof entry.dailyHistoricalValue === 'number'
-      ? entry.result.valueNumber - entry.dailyHistoricalValue
+      ? signedValueNumber - signedDailyHistoricalValue
       : null;
     const monthlyChange = typeof entry.monthlyHistoricalValue === 'number'
-      ? entry.result.valueNumber - entry.monthlyHistoricalValue
+      ? signedValueNumber - signedMonthlyHistoricalValue
       : null;
     item.appendChild(
       createChangeRow(dailyChange, monthlyChange, {

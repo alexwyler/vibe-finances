@@ -12,7 +12,9 @@
     "https://client.schwab.com/*",
     "https://sws-gateway-nr.schwab.com/*",
     "https://www.wealthfront.com/*",
-    "https://cdn.wealthfront.com/*"
+    "https://cdn.wealthfront.com/*",
+    "https://www.bankofamerica.com/*",
+    "https://secure.bankofamerica.com/*"
   ],
   "background": {
     "service_worker": "service-worker.js",
