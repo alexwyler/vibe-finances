@@ -37,6 +37,7 @@ const SECTION_DEFINITIONS = [
     title: 'Bank + Spending',
     entryIds: [
       'wellsFargoChecking',
+      'chaseCreditCardBalance',
       'cashflowIncome',
       'cashflowFixed',
       'cashflowDiscretionary',
@@ -62,6 +63,26 @@ const UNLOCKED_ICON = `
     <path d="M17 10h-5V7a2 2 0 1 1 4 0h2a4 4 0 1 0-8 0v3H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2Zm0 9H7v-7h10v7Z" fill="currentColor"/>
   </svg>
 `;
+
+const BREAKDOWN_CATEGORY_ALIASES = {
+  Automotive: ['Automotive', 'Auto', 'Car'],
+  'Bills & Utilities': ['Bills & Utilities', 'Bills', 'Utilities'],
+  Education: ['Education'],
+  Entertainment: ['Entertainment'],
+  'Fees & Adjustments': ['Fees & Adjustments', 'Fees'],
+  'Food & Drink': ['Food & Drink', 'Dining', 'Dining Out', 'Restaurants'],
+  Gas: ['Gas', 'Fuel'],
+  'Gifts & Donations': ['Gifts & Donations', 'Gifts', 'Donations'],
+  Groceries: ['Groceries', 'Groceries & Household'],
+  'Health & Wellness': ['Health & Wellness', 'Health', 'Medical', 'Wellness'],
+  Home: ['Home', 'Home Goods'],
+  Miscellaneous: ['Miscellaneous', 'Misc'],
+  Other: ['Other', 'Miscellaneous', 'Misc', 'Unknown', 'Uncategorized'],
+  Personal: ['Personal', 'Personal Care'],
+  'Professional Services': ['Professional Services', 'Services'],
+  Shopping: ['Shopping'],
+  Travel: ['Travel']
+};
 
 function setStatus(message, className = '') {
   statusElement.textContent = message || '';
@@ -133,8 +154,119 @@ function formatCurrency(value) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0);
 }
 
+function parseCurrencyText(valueText) {
+  if (!valueText) {
+    return null;
+  }
+
+  const normalized = String(valueText).replace(/,/g, '').trim();
+  const match = normalized.match(/\$?([0-9]+(?:\.[0-9]{1,2})?)/);
+  if (!match) {
+    return null;
+  }
+
+  const isNegative = normalized.includes('-') || normalized.includes('(');
+  return Number(match[1]) * (isNegative ? -1 : 1);
+}
+
 function getDisplayMultiplier(extractor) {
   return typeof extractor.netWorthMultiplier === 'number' ? extractor.netWorthMultiplier : 1;
+}
+
+function normalizeCategoryKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function getCategoryAliases(categoryLabel) {
+  return BREAKDOWN_CATEGORY_ALIASES[categoryLabel] || [categoryLabel];
+}
+
+function resolveBreakdownCategory(existingItems, chaseCategory) {
+  const existingCategoryMap = new Map(
+    existingItems.map((item) => [normalizeCategoryKey(item.category), item.category])
+  );
+
+  for (const alias of getCategoryAliases(chaseCategory)) {
+    const normalizedAlias = normalizeCategoryKey(alias);
+    if (existingCategoryMap.has(normalizedAlias)) {
+      return existingCategoryMap.get(normalizedAlias);
+    }
+  }
+
+  const fuzzyMatch = existingItems.find((item) => {
+    const normalizedExisting = normalizeCategoryKey(item.category);
+    return getCategoryAliases(chaseCategory).some((alias) => {
+      const normalizedAlias = normalizeCategoryKey(alias);
+      return normalizedExisting.includes(normalizedAlias) || normalizedAlias.includes(normalizedExisting);
+    });
+  });
+
+  if (fuzzyMatch?.category) {
+    return fuzzyMatch.category;
+  }
+
+  const otherCategory = existingItems.find((item) => normalizeCategoryKey(item.category) === 'other');
+  if (otherCategory?.category) {
+    return otherCategory.category;
+  }
+
+  return 'Other';
+}
+
+function formatBreakdownPercentage(amountValue, totalValue) {
+  if (typeof amountValue !== 'number' || Number.isNaN(amountValue)) {
+    return '';
+  }
+
+  const denominator = Math.abs(totalValue);
+  if (!denominator || Number.isNaN(denominator)) {
+    return '';
+  }
+
+  const percentage = (Math.abs(amountValue) / denominator) * 100;
+  if (!Number.isFinite(percentage)) {
+    return '';
+  }
+
+  return `${percentage >= 10 ? percentage.toFixed(0) : percentage.toFixed(1)}% of discretionary`;
+}
+
+function mergeBreakdownItems(existingItems, chaseItems, totalDiscretionaryValue = null) {
+  const merged = new Map();
+  const mergeItem = (item, categoryLabel) => {
+    const amountValue = parseCurrencyText(item.amount);
+    if (typeof amountValue !== 'number' || Number.isNaN(amountValue)) {
+      return;
+    }
+
+    const current = merged.get(categoryLabel) || {
+      category: categoryLabel,
+      amountValue: 0
+    };
+
+    current.amountValue += amountValue;
+    merged.set(categoryLabel, current);
+  };
+
+  for (const item of existingItems) {
+    mergeItem(item, item.category);
+  }
+
+  for (const item of chaseItems) {
+    mergeItem(item, resolveBreakdownCategory(existingItems, item.category));
+  }
+
+  return Array.from(merged.values())
+    .sort((left, right) => right.amountValue - left.amountValue)
+    .map((item) => ({
+      category: item.category,
+      amount: formatCurrency(item.amountValue),
+      detail: formatBreakdownPercentage(item.amountValue, totalDiscretionaryValue)
+    }));
 }
 
 function formatDelta(value) {
@@ -379,6 +511,64 @@ function renderGlobalSummary(state) {
   return metricDetails.netWorth.isStale || metricDetails.netCashflow.isStale;
 }
 
+function buildAggregateCashflowEntry(extractorId, state, timestamps = {}) {
+  const metricDetails = computeGlobalMetricDetails(state);
+  const dailyMetrics = typeof timestamps.oneDayAgo === 'number'
+    ? computeHistoricalMetrics(state, timestamps.oneDayAgo)
+    : null;
+  const monthlyMetrics = typeof timestamps.oneMonthAgo === 'number'
+    ? computeHistoricalMetrics(state, timestamps.oneMonthAgo)
+    : null;
+
+  const aggregateMap = {
+    cashflowIncome: {
+      value: metricDetails.income.value,
+      isStale: metricDetails.income.isStale,
+      dailyHistoricalValue: dailyMetrics?.income ?? null,
+      monthlyHistoricalValue: monthlyMetrics?.income ?? null
+    },
+    cashflowFixed: {
+      value: metricDetails.fixed.value,
+      isStale: metricDetails.fixed.isStale,
+      dailyHistoricalValue: dailyMetrics?.fixed ?? null,
+      monthlyHistoricalValue: monthlyMetrics?.fixed ?? null
+    },
+    cashflowDiscretionary: {
+      value: metricDetails.discretionary.value,
+      isStale: metricDetails.discretionary.isStale,
+      dailyHistoricalValue: dailyMetrics?.discretionary ?? null,
+      monthlyHistoricalValue: monthlyMetrics?.discretionary ?? null
+    }
+  };
+
+  const aggregate = aggregateMap[extractorId];
+  if (!aggregate) {
+    return null;
+  }
+
+  const northwesternModule = MODULES.find((module) => module.id === 'northwesternMutual');
+  const northwesternCashflowUrl = northwesternModule
+    ? getPageUrlByExtractorId(northwesternModule, 'cashflowDiscretionary')
+    : '';
+
+  return {
+    id: extractorId,
+    label: getDefaultExtractorLabel({ id: extractorId, label: extractorId }),
+    result: {
+      type: 'currency',
+      label: getDefaultExtractorLabel({ id: extractorId, label: extractorId }),
+      valueText: formatCurrency(aggregate.value),
+      valueNumber: aggregate.value
+    },
+    isStale: aggregate.isStale,
+    displayMultiplier: 1,
+    dailyHistoricalValue: aggregate.dailyHistoricalValue,
+    monthlyHistoricalValue: aggregate.monthlyHistoricalValue,
+    sourceUrl: northwesternCashflowUrl,
+    sourceModuleName: northwesternModule?.displayName || 'Northwestern Mutual'
+  };
+}
+
 function getPageUrlByExtractorId(module, extractorId) {
   for (const page of module.pages) {
     if (page.extractors.some((extractor) => extractor.id === extractorId)) {
@@ -389,44 +579,100 @@ function getPageUrlByExtractorId(module, extractorId) {
   return '';
 }
 
-function collectDisplayEntries(state) {
-  const entries = new Map();
-  const now = Date.now();
-  const oneDayAgo = now - (24 * 60 * 60 * 1000);
-  const oneMonthAgo = now - (30 * 24 * 60 * 60 * 1000);
+function buildDisplayEntry(state, extractorId, timestamps = {}) {
+  if (extractorId === 'cashflowDiscretionary') {
+    return buildAggregateCashflowEntry(extractorId, state, timestamps);
+  }
+
+  const oneDayAgo = timestamps.oneDayAgo;
+  const oneMonthAgo = timestamps.oneMonthAgo;
 
   for (const module of MODULES) {
-    const moduleState = state.modules[module.id];
+    const moduleState = state.modules?.[module.id];
     if (!moduleState?.enabled) {
       continue;
     }
 
     const extractorState = moduleState.extractorConfig || {};
     for (const page of module.pages) {
-      for (const extractor of page.extractors) {
-        if (extractorState[extractor.id]?.enabled === false) {
-          continue;
-        }
+      const extractor = page.extractors.find((candidate) => candidate.id === extractorId);
+      if (!extractor) {
+        continue;
+      }
 
-        if (!SECTION_DEFINITIONS.some((section) => section.entryIds.includes(extractor.id))) {
-          continue;
-        }
+      if (extractorState[extractor.id]?.enabled === false) {
+        return null;
+      }
 
-        const { result, isStale } = getEffectiveExtractorResult(state, module.id, extractor.id);
-        const displayMultiplier = getDisplayMultiplier(extractor);
-        entries.set(extractor.id, {
-          id: extractor.id,
-          label: moduleState.extractorConfig?.[extractor.id]?.label || getDefaultExtractorLabel(extractor),
-          result,
-          isStale,
-          displayMultiplier,
-          dailyHistoricalValue: getInterpolatedExtractorValue(state, extractor.id, oneDayAgo),
-          monthlyHistoricalValue: getInterpolatedExtractorValue(state, extractor.id, oneMonthAgo),
-          sourceUrl: getPageUrlByExtractorId(module, extractor.id),
-          sourceModuleName: module.displayName
-        });
+      const { result, isStale } = getEffectiveExtractorResult(state, module.id, extractor.id);
+      return {
+        id: extractor.id,
+        label: moduleState.extractorConfig?.[extractor.id]?.label || getDefaultExtractorLabel(extractor),
+        result,
+        isStale,
+        displayMultiplier: getDisplayMultiplier(extractor),
+        dailyHistoricalValue: typeof oneDayAgo === 'number'
+          ? getInterpolatedExtractorValue(state, extractor.id, oneDayAgo)
+          : null,
+        monthlyHistoricalValue: typeof oneMonthAgo === 'number'
+          ? getInterpolatedExtractorValue(state, extractor.id, oneMonthAgo)
+          : null,
+        sourceUrl: getPageUrlByExtractorId(module, extractor.id),
+        sourceModuleName: module.displayName
+      };
+    }
+  }
+
+  return null;
+}
+
+function collectDisplayEntries(state) {
+  const entries = new Map();
+  const now = Date.now();
+  const oneDayAgo = now - (24 * 60 * 60 * 1000);
+  const oneMonthAgo = now - (30 * 24 * 60 * 60 * 1000);
+  const timestamps = { oneDayAgo, oneMonthAgo };
+
+  for (const sectionDefinition of SECTION_DEFINITIONS) {
+    for (const entryId of sectionDefinition.entryIds) {
+      if (entries.has(entryId)) {
+        continue;
+      }
+
+      const entry = buildDisplayEntry(state, entryId, timestamps);
+      if (entry) {
+        entries.set(entryId, entry);
       }
     }
+  }
+
+  const chaseBreakdownEntry = buildDisplayEntry(state, 'chaseDiscretionaryBreakdown');
+  const discretionaryEntry = entries.get('cashflowDiscretionary');
+  const totalDiscretionaryValue = discretionaryEntry?.result?.type === 'currency'
+    ? discretionaryEntry.result.valueNumber
+    : null;
+  const baseBreakdownEntry = entries.get('cashflowBreakdown');
+  const baseBreakdownItems = baseBreakdownEntry?.result?.type === 'list' && Array.isArray(baseBreakdownEntry.result.items)
+    ? baseBreakdownEntry.result.items
+    : [];
+  const chaseBreakdownItems = chaseBreakdownEntry?.result?.type === 'list' && Array.isArray(chaseBreakdownEntry.result.items)
+    ? chaseBreakdownEntry.result.items
+    : [];
+
+  if (chaseBreakdownItems.length) {
+    entries.set('cashflowBreakdown', {
+      ...(baseBreakdownEntry || chaseBreakdownEntry),
+      id: 'cashflowBreakdown',
+      label: baseBreakdownEntry?.label || 'Discretionary Spending Breakdown',
+      result: {
+        type: 'list',
+        label: baseBreakdownEntry?.result?.label || 'Discretionary Spending Breakdown',
+        items: mergeBreakdownItems(baseBreakdownItems, chaseBreakdownItems, totalDiscretionaryValue)
+      },
+      isStale: Boolean(baseBreakdownEntry?.isStale || chaseBreakdownEntry?.isStale),
+      sourceUrl: baseBreakdownEntry?.sourceUrl || chaseBreakdownEntry?.sourceUrl || '',
+      sourceModuleName: baseBreakdownEntry?.sourceModuleName || chaseBreakdownEntry?.sourceModuleName || 'Chase'
+    });
   }
 
   return entries;

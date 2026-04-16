@@ -2,6 +2,15 @@ import { MODULES, getModuleById } from './lib/modules.js';
 import { appendHistorySnapshot, ensureState, getState, saveState, updateResult, updateResults } from './lib/storage.js';
 import { runModule } from './lib/runner.js';
 
+function moduleRequiresDebugger(module) {
+  return Boolean(
+    module?.requiresDebugger
+    || module?.login?.nativeLoginFlow?.enabled
+    || module?.login?.nativeSubmitFallback?.enabled
+    || module?.login?.manualChallenge?.nativePrepare?.enabled
+  );
+}
+
 async function runModuleAndPersist(moduleId, { saveSnapshot = true, preserveTabOnFailure = false } = {}) {
   const state = await getState();
   const module = getModuleById(moduleId);
@@ -20,13 +29,24 @@ async function runModuleAndPersist(moduleId, { saveSnapshot = true, preserveTabO
 async function runAllModulesAndPersist() {
   const state = await getState();
   const output = {};
+  const debuggerModules = MODULES.filter((module) => moduleRequiresDebugger(module));
+  const parallelModules = MODULES.filter((module) => !moduleRequiresDebugger(module));
+  const moduleRuns = [];
 
-  const moduleRuns = await Promise.all(
-    MODULES.map(async (module) => {
-      const result = await runModule(module, state.modules[module.id]);
-      return [module.id, result];
-    })
-  );
+  for (const module of debuggerModules) {
+    const result = await runModule(module, state.modules[module.id]);
+    moduleRuns.push([module.id, result]);
+  }
+
+  if (parallelModules.length) {
+    const parallelRuns = await Promise.all(
+      parallelModules.map(async (module) => {
+        const result = await runModule(module, state.modules[module.id]);
+        return [module.id, result];
+      })
+    );
+    moduleRuns.push(...parallelRuns);
+  }
 
   let hasSuccessfulRun = false;
   for (const [moduleId, result] of moduleRuns) {

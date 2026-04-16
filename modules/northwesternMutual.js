@@ -1,14 +1,46 @@
 export default {
   id: 'northwesternMutual',
   displayName: 'Northwestern Mutual',
+  closeTabsBeforeRun: [
+    'https://www.northwesternmutual.com/*',
+    'https://login.northwesternmutual.com/*',
+    'https://plan.northwesternmutual.com/*'
+  ],
   login: {
-    startUrl: 'https://www.northwesternmutual.com/log-in/',
+    startUrl: 'https://plan.northwesternmutual.com/cashflow?web-only=true',
+    timeoutMs: 4000,
+    preActions: [
+      {
+        type: 'click',
+        selector: '#nmx-login-open-button, button[aria-label="Open login modal"]',
+        waitFor: '#nmx-client-login-modal input[name="username"], #nmx-client-login-submit',
+        waitMs: 1000
+      }
+    ],
+    submitStrategy: 'clickOnly',
+    submitWithEnter: true,
+    followupAttempts: [
+      {
+        matchUrls: ['https://login.northwesternmutual.com/login'],
+        selectors: {
+          username: '#username, input[name="username"]',
+          password: '#password, input[name="password"]',
+          submit: '#login, button[type="submit"]'
+        },
+        submitStrategy: 'auto',
+        submitWithEnter: true,
+        timeoutMs: 5000,
+        postSubmitWaitMs: 2000,
+        pageId: 'loginStandalone',
+        pageLabel: 'Standalone Login'
+      }
+    ],
     selectors: {
-      username: 'input[name="username"]',
-      password: 'input[name="password"]',
-      submit: '#nmx-client-login-submit, button[type="submit"]'
+      username: '#nmx-client-login-modal input[name="username"], #nmx-client-login-username-[object Object], input[name="username"]',
+      password: '#nmx-client-login-modal input[name="password"], #nmx-client-login-password-[object Object], input[name="password"]',
+      submit: '#nmx-client-login-submit, #nmx-client-login-modal button[type="submit"], button[type="submit"]'
     },
-    postSubmitWaitMs: 5000
+    postSubmitWaitMs: 1500
   },
   pages: [
     {
@@ -16,9 +48,9 @@ export default {
       label: 'Net Worth',
       url: 'https://plan.northwesternmutual.com/net-worth',
       waitFor: {
-        selector: 'table[data-test-id="product-table-investments"], table[data-test-id="product-table-life-insurance"], table[data-test-id="product-table-bank-accounts"]',
+        selector: 'table[data-test-id="product-table-investments"] td.text-right dt, table[data-test-id="product-table-life-insurance"] td.text-right dt, table[data-test-id="product-table-bank-accounts"] td.text-right dt',
         timeoutMs: 20000,
-        settleMs: 1500
+        settleMs: 500
       },
       extractors: [
         {
@@ -55,9 +87,9 @@ export default {
       label: 'Cash Flow',
       url: 'https://plan.northwesternmutual.com/cashflow',
       waitFor: {
-        selector: '[data-test-id="month-selection-money-container"], [data-test-id="month-selection-spending-container"]',
+        selector: 'button[data-test-id="month-selection-money-container"] h1, [data-test-id="month-selection-spending-container"] p.luna-type-header-55',
         timeoutMs: 20000,
-        settleMs: 1200
+        settleMs: 500
       },
       extractors: [
         {

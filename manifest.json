@@ -3,7 +3,7 @@
   "name": "Financial Institution Scraper",
   "version": "0.1.0",
   "description": "Log into supported financial institutions and scrape configured values into a side panel.",
-  "permissions": ["storage", "scripting", "tabs", "sidePanel"],
+  "permissions": ["storage", "scripting", "tabs", "sidePanel", "debugger"],
   "host_permissions": [
     "https://www.northwesternmutual.com/*",
     "https://login.northwesternmutual.com/*",
@@ -14,7 +14,10 @@
     "https://www.wealthfront.com/*",
     "https://cdn.wealthfront.com/*",
     "https://www.bankofamerica.com/*",
-    "https://secure.bankofamerica.com/*"
+    "https://secure.bankofamerica.com/*",
+    "https://www.chase.com/*",
+    "https://secure.chase.com/*",
+    "https://*.chase.com/*"
   ],
   "background": {
     "service_worker": "service-worker.js",
