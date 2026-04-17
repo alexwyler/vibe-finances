@@ -28,8 +28,7 @@ const SECTION_DEFINITIONS = [
       'wealthfrontBrokerage',
       'schwabTotalValue',
       'brokerageIndividual',
-      'adjustableComplifeTotal',
-      'bofaAutoLoan'
+      'adjustableComplifeTotal'
     ]
   },
   {
@@ -37,6 +36,7 @@ const SECTION_DEFINITIONS = [
     title: 'Bank + Spending',
     entryIds: [
       'wellsFargoChecking',
+      'bofaAutoLoan',
       'chaseCreditCardBalance',
       'cashflowIncome',
       'cashflowFixed',
@@ -50,6 +50,13 @@ const MONTHLY_ONLY_ENTRY_IDS = new Set([
   'cashflowIncome',
   'cashflowFixed',
   'cashflowDiscretionary'
+]);
+
+const INVESTMENT_PERCENT_ENTRY_IDS = new Set([
+  'wealthfrontBrokerage',
+  'schwabTotalValue',
+  'brokerageIndividual',
+  'adjustableComplifeTotal'
 ]);
 
 const LOCKED_ICON = `
@@ -308,9 +315,21 @@ function formatCompactCurrency(value) {
   return `${prefix}${formatCurrency(absolute)}`;
 }
 
+function formatPercentChange(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return 'No history';
+  }
+
+  const prefix = value >= 0 ? '+' : '-';
+  const absolute = Math.abs(value);
+  const digits = absolute >= 100 ? 0 : 1;
+  return `${prefix}${absolute.toFixed(digits)}%`;
+}
+
 function createChangeRow(dailyChange, monthlyChange, options = {}) {
   const showDaily = options.showDaily !== false;
   const showMonthly = options.showMonthly !== false;
+  const showMonthlyPercent = options.showMonthlyPercent === true;
   const changeRow = document.createElement('div');
   changeRow.className = 'summary-change-row';
 
@@ -326,6 +345,13 @@ function createChangeRow(dailyChange, monthlyChange, options = {}) {
     monthlyPill.className = 'summary-change-pill';
     monthlyPill.textContent = `1M ${formatCompactCurrency(monthlyChange)}`;
     changeRow.appendChild(monthlyPill);
+  }
+
+  if (showMonthlyPercent) {
+    const monthlyPercentPill = document.createElement('span');
+    monthlyPercentPill.className = 'summary-change-pill';
+    monthlyPercentPill.textContent = `1M ${formatPercentChange(options.monthlyPercentChange)}`;
+    changeRow.appendChild(monthlyPercentPill);
   }
 
   return changeRow;
@@ -659,7 +685,7 @@ function collectDisplayEntries(state) {
     ? chaseBreakdownEntry.result.items
     : [];
 
-  if (chaseBreakdownItems.length) {
+  if (baseBreakdownEntry || chaseBreakdownItems.length) {
     entries.set('cashflowBreakdown', {
       ...(baseBreakdownEntry || chaseBreakdownEntry),
       id: 'cashflowBreakdown',
@@ -725,9 +751,16 @@ function renderDisplayItem(entry) {
     const monthlyChange = typeof entry.monthlyHistoricalValue === 'number'
       ? signedValueNumber - signedMonthlyHistoricalValue
       : null;
+    const monthlyPercentChange = typeof signedMonthlyHistoricalValue === 'number'
+      && !Number.isNaN(signedMonthlyHistoricalValue)
+      && signedMonthlyHistoricalValue > 0
+      ? ((signedValueNumber - signedMonthlyHistoricalValue) / signedMonthlyHistoricalValue) * 100
+      : null;
     item.appendChild(
       createChangeRow(dailyChange, monthlyChange, {
-        showDaily: !MONTHLY_ONLY_ENTRY_IDS.has(entry.id)
+        showDaily: !MONTHLY_ONLY_ENTRY_IDS.has(entry.id),
+        showMonthlyPercent: INVESTMENT_PERCENT_ENTRY_IDS.has(entry.id),
+        monthlyPercentChange
       })
     );
   }
