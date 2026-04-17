@@ -86,10 +86,20 @@ export default {
         postPrepareWaitMs: 250
       },
       activationRequired: true,
-      activationReason: 'Enter the Chase text code, then submit the form yourself.',
+      activationReason: 'Enter the Chase text code. We will submit it after a short pause.',
       autoSubmitCode: false,
       manualSubmitSettleMs: 700,
       focusSubmitAfterCode: true,
+      codeEntryPollMs: 250,
+      nativeSubmitAfterCode: {
+        enabled: true,
+        activateTab: true,
+        activationSettleMs: 250,
+        blurSettleMs: 1100,
+        focusSettleMs: 120,
+        postActionWaitMs: 400,
+        methods: ['nativeClick', 'nativeEnter']
+      },
       optionPostClickWaitMs: 250,
       optionSettleMs: 1200,
       beforeContinueWaitMs: 350,
