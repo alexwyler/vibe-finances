@@ -50,8 +50,14 @@ export default {
       label: 'Summary',
       url: 'https://client.schwab.com/app/accounts/summary/',
       activateBeforeScrapeMs: 1000,
+      nativeScrape: {
+        enabled: true,
+        pollMs: 250,
+        requiredExtractorIds: ['schwabTotalValue'],
+        timeoutMs: 30000
+      },
       waitFor: {
-        selector: '#totalValue sdps-number, #totalValue .sdps-display-value__value, #total-value-label',
+        selector: '#totalValue sdps-number, #totalValue .sdps-display-value__value, #litetotalValue sdps-number, #litetotalValue .sdps-display-value__value, [sdps-id="totalValue"] sdps-number, [sdps-id="totalValue"] .sdps-display-value__value, #total-value-label, #totalvalue-total-value-label',
         timeoutMs: 30000,
         settleMs: 1000
       },
@@ -60,10 +66,10 @@ export default {
           id: 'schwabTotalValue',
           label: 'Schwab brokerage account value',
           kind: 'itemValue',
-          itemSelector: '#totalValue',
+          itemSelector: '#totalValue, #litetotalValue, [sdps-id="totalValue"]',
           valueSelector: 'sdps-number, .sdps-display-value__value, .sdps-text-headline',
           meta: {
-            titleSelector: '#total-value-label'
+            titleSelector: '#total-value-label, #totalvalue-total-value-label'
           }
         }
       ]
