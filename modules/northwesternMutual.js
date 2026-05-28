@@ -7,13 +7,14 @@ export default {
     'https://plan.northwesternmutual.com/*'
   ],
   login: {
-    startUrl: 'https://plan.northwesternmutual.com/cashflow?web-only=true',
-    timeoutMs: 4000,
+    startUrl: 'https://www.northwesternmutual.com/',
+    timeoutMs: 10000,
     preActions: [
       {
         type: 'click',
         selector: '#nmx-login-open-button, button[aria-label="Open login modal"]',
         waitFor: '#nmx-client-login-modal input[name="username"], #nmx-client-login-submit',
+        waitForVisible: true,
         waitMs: 1000
       }
     ],
@@ -36,8 +37,8 @@ export default {
       }
     ],
     selectors: {
-      username: '#nmx-client-login-modal input[name="username"], #nmx-client-login-username-[object Object], input[name="username"]',
-      password: '#nmx-client-login-modal input[name="password"], #nmx-client-login-password-[object Object], input[name="password"]',
+      username: '#nmx-client-login-modal input[name="username"], input[name="username"]',
+      password: '#nmx-client-login-modal input[name="password"], input[name="password"], input[type="password"]',
       submit: '#nmx-client-login-submit, #nmx-client-login-modal button[type="submit"], button[type="submit"]'
     },
     postSubmitWaitMs: 1500
