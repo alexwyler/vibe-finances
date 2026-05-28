@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Financial Institution Scraper",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Log into supported financial institutions and scrape configured values into a side panel.",
   "permissions": ["storage", "scripting", "tabs", "sidePanel", "debugger"],
   "host_permissions": [

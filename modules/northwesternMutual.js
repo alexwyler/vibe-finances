@@ -18,8 +18,25 @@ export default {
         waitMs: 1000
       }
     ],
+    executionTimeoutMs: 20000,
     submitStrategy: 'clickOnly',
     submitWithEnter: true,
+    nativeLoginFlow: {
+      enabled: true,
+      activateTab: true,
+      activationSettleMs: 250,
+      initialStateTimeoutMs: 12000,
+      focusSettleMs: 120,
+      selectionSettleMs: 60,
+      typingSettleMs: 220,
+      postActionWaitMs: 350,
+      progressTimeoutMs: 5000,
+      focusPasswordBeforeEnter: true,
+      methods: ['nativeClick', 'nativeEnter'],
+      usernameSelectors: '#nmx-client-login-modal input[name="username"], input[name="username"]',
+      passwordSelectors: '#nmx-client-login-modal input[name="password"], input[name="password"], input[type="password"]',
+      submitSelectors: '#nmx-client-login-submit, #nmx-client-login-modal button[type="submit"]'
+    },
     selectors: {
       username: '#nmx-client-login-modal input[name="username"], input[name="username"]',
       password: '#nmx-client-login-modal input[name="password"], input[name="password"], input[type="password"]',
