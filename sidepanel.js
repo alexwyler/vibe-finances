@@ -19,6 +19,7 @@ const blurValuesToggle = document.getElementById('blur-values-toggle');
 const blurValuesIcon = document.getElementById('blur-values-icon');
 
 const BLUR_VALUES_STORAGE_KEY = 'blurValuesEnabled';
+const RUNNING_STATUS_TIMEOUT_MS = 30 * 60 * 1000;
 
 const SECTION_DEFINITIONS = [
   {
@@ -180,6 +181,75 @@ function getDisplayMultiplier(extractor) {
   return typeof extractor.netWorthMultiplier === 'number' ? extractor.netWorthMultiplier : 1;
 }
 
+function getModuleRunStatus(state, moduleId) {
+  return state.runStatus?.modules?.[moduleId] || null;
+}
+
+function isModuleUpdating(state, moduleId) {
+  const status = getModuleRunStatus(state, moduleId);
+  if (status?.status !== 'running') {
+    return false;
+  }
+
+  const startedAtMs = Date.parse(status.startedAt || '');
+  return !Number.isFinite(startedAtMs) || Date.now() - startedAtMs < RUNNING_STATUS_TIMEOUT_MS;
+}
+
+function hasUpdatingModule(state) {
+  return MODULES.some((module) => isModuleUpdating(state, module.id));
+}
+
+function getExtractorCashflowRole(extractor, pageId) {
+  if (typeof extractor.cashflowRole === 'string') {
+    return extractor.cashflowRole;
+  }
+
+  if (pageId !== 'cashflow') {
+    return null;
+  }
+
+  if (extractor.id === 'cashflowIncome') {
+    return 'income';
+  }
+
+  if (extractor.id === 'cashflowFixed') {
+    return 'fixed';
+  }
+
+  if (extractor.id === 'cashflowDiscretionary') {
+    return 'discretionary';
+  }
+
+  return null;
+}
+
+function isAggregateCashflowUpdating(state, cashflowRole) {
+  for (const module of MODULES) {
+    if (!isModuleUpdating(state, module.id)) {
+      continue;
+    }
+
+    const moduleState = state.modules?.[module.id];
+    if (!moduleState?.enabled) {
+      continue;
+    }
+
+    for (const page of module.pages) {
+      for (const extractor of page.extractors) {
+        if (moduleState.extractorConfig?.[extractor.id]?.enabled === false) {
+          continue;
+        }
+
+        if (getExtractorCashflowRole(extractor, page.id) === cashflowRole) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
 function normalizeCategoryKey(value) {
   return String(value || '')
     .toLowerCase()
@@ -276,6 +346,32 @@ function mergeBreakdownItems(existingItems, chaseItems, totalDiscretionaryValue 
     }));
 }
 
+function createSyntheticBreakdownItem(category, amountValue) {
+  if (typeof amountValue !== 'number' || Number.isNaN(amountValue) || amountValue === 0) {
+    return null;
+  }
+
+  return {
+    category,
+    amount: formatCurrency(amountValue)
+  };
+}
+
+function sumBreakdownItems(items) {
+  if (!Array.isArray(items) || !items.length) {
+    return 0;
+  }
+
+  return items.reduce((total, item) => {
+    const amountValue = parseCurrencyText(item?.amount);
+    if (typeof amountValue !== 'number' || Number.isNaN(amountValue)) {
+      return total;
+    }
+
+    return total + amountValue;
+  }, 0);
+}
+
 function formatDelta(value) {
   if (typeof value !== 'number' || Number.isNaN(value)) {
     return 'No history';
@@ -357,14 +453,28 @@ function createChangeRow(dailyChange, monthlyChange, options = {}) {
   return changeRow;
 }
 
+function createUpdatingIndicator() {
+  const indicator = document.createElement('span');
+  indicator.className = 'updating-indicator';
+  indicator.textContent = 'Updating';
+  return indicator;
+}
+
 function createSummaryCard(labelText, currentValue, dailyChange, monthlyChange, isStale = false, options = {}) {
   const item = document.createElement('section');
   item.className = 'result-item summary-item';
+  item.classList.toggle('is-updating', options.isUpdating === true);
 
+  const labelRow = document.createElement('div');
+  labelRow.className = 'result-label-row';
   const label = document.createElement('div');
   label.className = 'result-label';
   label.textContent = labelText;
-  item.appendChild(label);
+  labelRow.appendChild(label);
+  if (options.isUpdating) {
+    labelRow.appendChild(createUpdatingIndicator());
+  }
+  item.appendChild(labelRow);
 
   const value = document.createElement('div');
   value.className = 'result-value';
@@ -518,7 +628,8 @@ function renderGlobalSummary(state) {
       metricDetails.netWorth.value,
       dailyMetrics.netWorth === null ? null : metricDetails.netWorth.value - dailyMetrics.netWorth,
       monthlyMetrics.netWorth === null ? null : metricDetails.netWorth.value - monthlyMetrics.netWorth,
-      metricDetails.netWorth.isStale
+      metricDetails.netWorth.isStale,
+      { isUpdating: hasUpdatingModule(state) }
     )
   );
 
@@ -529,7 +640,7 @@ function renderGlobalSummary(state) {
       dailyMetrics.netCashflow === null ? null : metricDetails.netCashflow.value - dailyMetrics.netCashflow,
       monthlyMetrics.netCashflow === null ? null : metricDetails.netCashflow.value - monthlyMetrics.netCashflow,
       metricDetails.netCashflow.isStale,
-      { showDaily: false }
+      { showDaily: false, isUpdating: hasUpdatingModule(state) }
     )
   );
 
@@ -550,18 +661,21 @@ function buildAggregateCashflowEntry(extractorId, state, timestamps = {}) {
     cashflowIncome: {
       value: metricDetails.income.value,
       isStale: metricDetails.income.isStale,
+      role: 'income',
       dailyHistoricalValue: dailyMetrics?.income ?? null,
       monthlyHistoricalValue: monthlyMetrics?.income ?? null
     },
     cashflowFixed: {
       value: metricDetails.fixed.value,
       isStale: metricDetails.fixed.isStale,
+      role: 'fixed',
       dailyHistoricalValue: dailyMetrics?.fixed ?? null,
       monthlyHistoricalValue: monthlyMetrics?.fixed ?? null
     },
     cashflowDiscretionary: {
       value: metricDetails.discretionary.value,
       isStale: metricDetails.discretionary.isStale,
+      role: 'discretionary',
       dailyHistoricalValue: dailyMetrics?.discretionary ?? null,
       monthlyHistoricalValue: monthlyMetrics?.discretionary ?? null
     }
@@ -587,6 +701,7 @@ function buildAggregateCashflowEntry(extractorId, state, timestamps = {}) {
       valueNumber: aggregate.value
     },
     isStale: aggregate.isStale,
+    isUpdating: isAggregateCashflowUpdating(state, aggregate.role),
     displayMultiplier: 1,
     dailyHistoricalValue: aggregate.dailyHistoricalValue,
     monthlyHistoricalValue: aggregate.monthlyHistoricalValue,
@@ -636,6 +751,7 @@ function buildDisplayEntry(state, extractorId, timestamps = {}) {
         label: moduleState.extractorConfig?.[extractor.id]?.label || getDefaultExtractorLabel(extractor),
         result,
         isStale,
+        isUpdating: isModuleUpdating(state, module.id),
         displayMultiplier: getDisplayMultiplier(extractor),
         dailyHistoricalValue: typeof oneDayAgo === 'number'
           ? getInterpolatedExtractorValue(state, extractor.id, oneDayAgo)
@@ -673,6 +789,8 @@ function collectDisplayEntries(state) {
   }
 
   const chaseBreakdownEntry = buildDisplayEntry(state, 'chaseDiscretionaryBreakdown');
+  const chaseSpendEntry = buildDisplayEntry(state, 'chaseDiscretionarySpend');
+  const chaseBalanceEntry = buildDisplayEntry(state, 'chaseCreditCardBalance');
   const discretionaryEntry = entries.get('cashflowDiscretionary');
   const totalDiscretionaryValue = discretionaryEntry?.result?.type === 'currency'
     ? discretionaryEntry.result.valueNumber
@@ -684,8 +802,24 @@ function collectDisplayEntries(state) {
   const chaseBreakdownItems = chaseBreakdownEntry?.result?.type === 'list' && Array.isArray(chaseBreakdownEntry.result.items)
     ? chaseBreakdownEntry.result.items
     : [];
+  const chaseBreakdownTotal = sumBreakdownItems(chaseBreakdownItems);
+  const chaseSpendValue = chaseSpendEntry?.result?.type === 'currency'
+    ? chaseSpendEntry.result.valueNumber
+    : null;
+  const categorizedChaseAmount = typeof chaseSpendValue === 'number' && !Number.isNaN(chaseSpendValue)
+    ? chaseSpendValue
+    : chaseBreakdownTotal;
+  const uncategorizedChaseBalanceAmount = chaseBalanceEntry?.result?.type === 'currency'
+    ? chaseBalanceEntry.result.valueNumber - categorizedChaseAmount
+    : null;
+  const chaseBalanceBreakdownItem = chaseBalanceEntry?.result?.type === 'currency'
+    ? createSyntheticBreakdownItem('Other', uncategorizedChaseBalanceAmount)
+    : null;
+  const supplementalBreakdownItems = chaseBalanceBreakdownItem
+    ? [...chaseBreakdownItems, chaseBalanceBreakdownItem]
+    : chaseBreakdownItems;
 
-  if (baseBreakdownEntry || chaseBreakdownItems.length) {
+  if (baseBreakdownEntry || supplementalBreakdownItems.length) {
     entries.set('cashflowBreakdown', {
       ...(baseBreakdownEntry || chaseBreakdownEntry),
       id: 'cashflowBreakdown',
@@ -693,9 +827,10 @@ function collectDisplayEntries(state) {
       result: {
         type: 'list',
         label: baseBreakdownEntry?.result?.label || 'Discretionary Spending Breakdown',
-        items: mergeBreakdownItems(baseBreakdownItems, chaseBreakdownItems, totalDiscretionaryValue)
+        items: mergeBreakdownItems(baseBreakdownItems, supplementalBreakdownItems, totalDiscretionaryValue)
       },
       isStale: Boolean(baseBreakdownEntry?.isStale || chaseBreakdownEntry?.isStale),
+      isUpdating: Boolean(baseBreakdownEntry?.isUpdating || chaseBreakdownEntry?.isUpdating || chaseBalanceEntry?.isUpdating),
       sourceUrl: baseBreakdownEntry?.sourceUrl || chaseBreakdownEntry?.sourceUrl || '',
       sourceModuleName: baseBreakdownEntry?.sourceModuleName || chaseBreakdownEntry?.sourceModuleName || 'Chase'
     });
@@ -707,11 +842,18 @@ function collectDisplayEntries(state) {
 function renderDisplayItem(entry) {
   const item = document.createElement('section');
   item.className = 'result-item';
+  item.classList.toggle('is-updating', entry.isUpdating === true);
 
+  const labelRow = document.createElement('div');
+  labelRow.className = 'result-label-row';
   const label = document.createElement('div');
   label.className = 'result-label';
   label.textContent = entry.label;
-  item.appendChild(label);
+  labelRow.appendChild(label);
+  if (entry.isUpdating) {
+    labelRow.appendChild(createUpdatingIndicator());
+  }
+  item.appendChild(labelRow);
 
   const signedValueNumber = entry.result?.type === 'currency' && typeof entry.result.valueNumber === 'number'
     ? entry.result.valueNumber * (entry.displayMultiplier || 1)

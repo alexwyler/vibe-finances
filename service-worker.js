@@ -1,6 +1,27 @@
 import { MODULES, getModuleById } from './lib/modules.js';
-import { appendHistorySnapshot, ensureState, getState, saveState, updateResult, updateResults } from './lib/storage.js';
+import {
+  appendHistorySnapshot,
+  ensureState,
+  getState,
+  mergeResultValues,
+  saveState,
+  updateModuleRunStatus,
+  updateResult
+} from './lib/storage.js';
 import { runModule } from './lib/runner.js';
+
+let storageUpdateQueue = Promise.resolve();
+
+function enqueueStorageUpdate(work) {
+  storageUpdateQueue = storageUpdateQueue.then(work, work);
+  return storageUpdateQueue;
+}
+
+function createProgressOptions(moduleId) {
+  return {
+    onPageResult: (partialResult) => enqueueStorageUpdate(() => mergeResultValues(moduleId, partialResult))
+  };
+}
 
 function moduleRequiresDebugger(module) {
   return Boolean(
@@ -18,32 +39,100 @@ async function runModuleAndPersist(moduleId, { saveSnapshot = true, preserveTabO
     throw new Error(`Unknown module: ${moduleId}`);
   }
 
-  const result = await runModule(module, state.modules[moduleId], { preserveTabOnFailure });
-  await updateResult(moduleId, result);
-  if (result?.ok && saveSnapshot) {
-    await appendHistorySnapshot();
+  await enqueueStorageUpdate(() => updateModuleRunStatus(moduleId, {
+    status: 'running',
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    error: ''
+  }));
+
+  let result;
+  try {
+    result = await runModule(module, state.modules[moduleId], {
+      preserveTabOnFailure,
+      ...createProgressOptions(moduleId)
+    });
+  } catch (error) {
+    result = {
+      ok: false,
+      moduleId,
+      displayName: module.displayName,
+      startedAt: new Date().toISOString(),
+      lastRunAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : String(error),
+      pages: [],
+      values: {}
+    };
   }
+
+  await enqueueStorageUpdate(async () => {
+    await updateResult(moduleId, result);
+    await updateModuleRunStatus(moduleId, {
+      status: result?.ok ? 'succeeded' : 'failed',
+      startedAt: result?.startedAt || null,
+      finishedAt: result?.lastRunAt || new Date().toISOString(),
+      error: result?.ok ? '' : (result?.error || 'Module failed.')
+    });
+    if (result?.ok && saveSnapshot) {
+      await appendHistorySnapshot();
+    }
+  });
+
   return result;
 }
 
 async function runAllModulesAndPersist() {
   const state = await getState();
   const output = {};
-  const debuggerModules = MODULES.filter((module) => moduleRequiresDebugger(module));
-  const parallelModules = MODULES.filter((module) => !moduleRequiresDebugger(module));
+  const enabledModules = MODULES.filter((module) => state.modules?.[module.id]?.enabled !== false);
+  const debuggerModules = enabledModules.filter((module) => moduleRequiresDebugger(module));
+  const parallelModules = enabledModules.filter((module) => !moduleRequiresDebugger(module));
   const moduleRuns = [];
 
+  const runAndPersistModule = async (module) => {
+    await enqueueStorageUpdate(() => updateModuleRunStatus(module.id, {
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      error: ''
+    }));
+
+    let result;
+    try {
+      result = await runModule(module, state.modules[module.id], createProgressOptions(module.id));
+    } catch (error) {
+      result = {
+        ok: false,
+        moduleId: module.id,
+        displayName: module.displayName,
+        startedAt: new Date().toISOString(),
+        lastRunAt: new Date().toISOString(),
+        error: error instanceof Error ? error.message : String(error),
+        pages: [],
+        values: {}
+      };
+    }
+
+    await enqueueStorageUpdate(async () => {
+      await updateResult(module.id, result);
+      await updateModuleRunStatus(module.id, {
+        status: result?.ok ? 'succeeded' : 'failed',
+        startedAt: result?.startedAt || null,
+        finishedAt: result?.lastRunAt || new Date().toISOString(),
+        error: result?.ok ? '' : (result?.error || 'Module failed.')
+      });
+    });
+
+    return [module.id, result];
+  };
+
   for (const module of debuggerModules) {
-    const result = await runModule(module, state.modules[module.id]);
-    moduleRuns.push([module.id, result]);
+    moduleRuns.push(await runAndPersistModule(module));
   }
 
   if (parallelModules.length) {
     const parallelRuns = await Promise.all(
-      parallelModules.map(async (module) => {
-        const result = await runModule(module, state.modules[module.id]);
-        return [module.id, result];
-      })
+      parallelModules.map((module) => runAndPersistModule(module))
     );
     moduleRuns.push(...parallelRuns);
   }
@@ -54,10 +143,8 @@ async function runAllModulesAndPersist() {
     hasSuccessfulRun = hasSuccessfulRun || Boolean(result?.ok);
   }
 
-  await updateResults(output);
-
   if (hasSuccessfulRun) {
-    await appendHistorySnapshot();
+    await enqueueStorageUpdate(() => appendHistorySnapshot());
   }
   return output;
 }

@@ -233,6 +233,11 @@ button:disabled {
   border-color: #cfdcff;
 }
 
+.result-item.is-updating {
+  border-color: #a9c4ff;
+  box-shadow: 0 0 0 1px rgba(31, 94, 255, 0.08);
+}
+
 .summary-change-row {
   display: flex;
   gap: 8px;
@@ -253,6 +258,50 @@ button:disabled {
   font-size: 12px;
   color: #526076;
   margin-bottom: 4px;
+}
+
+.result-label-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.result-label-row .result-label {
+  margin-bottom: 0;
+}
+
+.updating-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  color: #17348f;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.updating-indicator::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #1f5eff;
+  animation: updatingPulse 1s ease-in-out infinite;
+}
+
+@keyframes updatingPulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .result-value {

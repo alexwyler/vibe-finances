@@ -141,7 +141,7 @@ export default {
       continueTexts: ['Continue', 'Next', 'Submit', 'Send code', 'Send me a code', 'Get code', 'Text me'],
       passwordSelectors: 'input[autocomplete="current-password"], input[name*="password" i], input[id*="password" i], input[type="password"]',
       codeSelectors: 'input[autocomplete="one-time-code"], input[inputmode="numeric"], input[maxlength="1"][inputmode="numeric"], input[name*="code" i], input[id*="code" i], input[name*="otp" i], input[id*="otp" i], input[name*="token" i], input[id*="token" i], input[name*="verification" i], input[id*="verification" i]',
-      submitSelectors: 'button[type="submit"], input[type="submit"], button[id*="submit" i], button[name*="submit" i], button[id*="continue" i], button[name*="continue" i], button[id*="verify" i], button[name*="verify" i], button[id*="send" i], button[name*="send" i]',
+      submitSelectors: 'button[aria-labelledby="next-content-label"], button[aria-labelledby="next-button-label"], mds-button#next-content, mds-button#next-button, #next-content, #next-button, button[type="submit"], input[type="submit"], button[id*="submit" i], button[name*="submit" i], button[id*="continue" i], button[name*="continue" i], button[id*="verify" i], button[name*="verify" i], button[id*="send" i], button[name*="send" i]',
       completion: {
         overlayHiddenSelector: '#logonDialog'
       },
