@@ -192,7 +192,17 @@ function isModuleUpdating(state, moduleId) {
   }
 
   const startedAtMs = Date.parse(status.startedAt || '');
-  return !Number.isFinite(startedAtMs) || Date.now() - startedAtMs < RUNNING_STATUS_TIMEOUT_MS;
+  if (!Number.isFinite(startedAtMs) || Date.now() - startedAtMs >= RUNNING_STATUS_TIMEOUT_MS) {
+    return false;
+  }
+
+  const result = state.results?.[moduleId];
+  const resultFinishedAtMs = Date.parse(result?.lastRunAt || '');
+  if (result?.inProgress !== true && Number.isFinite(resultFinishedAtMs) && resultFinishedAtMs >= startedAtMs) {
+    return false;
+  }
+
+  return true;
 }
 
 function hasUpdatingModule(state) {
