@@ -20,22 +20,6 @@ export default {
     ],
     submitStrategy: 'clickOnly',
     submitWithEnter: true,
-    followupAttempts: [
-      {
-        matchUrls: ['https://login.northwesternmutual.com/login'],
-        selectors: {
-          username: '#username, input[name="username"]',
-          password: '#password, input[name="password"]',
-          submit: '#login, button[type="submit"]'
-        },
-        submitStrategy: 'auto',
-        submitWithEnter: true,
-        timeoutMs: 5000,
-        postSubmitWaitMs: 2000,
-        pageId: 'loginStandalone',
-        pageLabel: 'Standalone Login'
-      }
-    ],
     selectors: {
       username: '#nmx-client-login-modal input[name="username"], input[name="username"]',
       password: '#nmx-client-login-modal input[name="password"], input[name="password"], input[type="password"]',
