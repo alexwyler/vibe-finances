@@ -12,6 +12,22 @@ function setSaveStatus(message, className = '') {
   saveStatus.className = className;
 }
 
+function setPasswordVisibility(input, button, isVisible) {
+  input.type = isVisible ? 'text' : 'password';
+  button.setAttribute('aria-pressed', String(isVisible));
+  button.setAttribute('aria-label', isVisible ? 'Hide password' : 'Show password');
+  button.title = isVisible ? 'Hide password' : 'Show password';
+}
+
+function attachPasswordToggle(fragment) {
+  const passwordInput = fragment.querySelector('.credential-password');
+  const toggleButton = fragment.querySelector('.password-toggle');
+
+  toggleButton.addEventListener('click', () => {
+    setPasswordVisibility(passwordInput, toggleButton, passwordInput.type === 'password');
+  });
+}
+
 function renderModule(module, state) {
   const fragment = moduleTemplate.content.cloneNode(true);
   const root = fragment.querySelector('.module-card');
@@ -22,6 +38,7 @@ function renderModule(module, state) {
   fragment.querySelector('.module-enabled').checked = Boolean(state.enabled);
   fragment.querySelector('.credential-username').value = state.credentials?.username || '';
   fragment.querySelector('.credential-password').value = state.credentials?.password || '';
+  attachPasswordToggle(fragment);
 
   const extractorList = fragment.querySelector('.extractor-list');
   for (const page of module.pages) {
