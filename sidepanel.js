@@ -11,6 +11,8 @@ const modulesContainer = document.getElementById('modules');
 const statusElement = document.getElementById('status');
 const globalSummaryElement = document.getElementById('global-summary');
 const staleNoteElement = document.getElementById('stale-note');
+const runLogElement = document.getElementById('run-log');
+const runLogListElement = document.getElementById('run-log-list');
 const runAllButton = document.getElementById('run-all');
 const runMenuToggleButton = document.getElementById('run-menu-toggle');
 const runMenuListElement = document.getElementById('run-menu-list');
@@ -978,6 +980,50 @@ function renderStaleNote(show) {
   staleNoteElement.textContent = 'Values marked * use the latest saved scrape result and may be out of date.';
 }
 
+function formatRunLogTimestamp(isoTimestamp) {
+  const date = new Date(isoTimestamp);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleString(undefined, {
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+function renderRunLog(state) {
+  const entries = (Array.isArray(state.runLog) ? state.runLog : []).slice(-30).reverse();
+
+  if (!entries.length) {
+    runLogElement.hidden = true;
+    runLogListElement.replaceChildren();
+    return;
+  }
+
+  runLogElement.hidden = false;
+  runLogListElement.replaceChildren();
+
+  for (const entry of entries) {
+    const item = document.createElement('li');
+    item.className = `run-log-entry${entry.level === 'error' ? ' is-error' : ''}`;
+
+    const time = document.createElement('span');
+    time.className = 'run-log-time';
+    time.textContent = formatRunLogTimestamp(entry.timestamp);
+
+    const message = document.createElement('span');
+    message.className = 'run-log-message';
+    message.textContent = entry.message;
+
+    item.appendChild(time);
+    item.appendChild(message);
+    runLogListElement.appendChild(item);
+  }
+}
+
 async function refresh() {
   const response = await chrome.runtime.sendMessage({ type: 'GET_STATE' });
   if (!response?.ok) {
@@ -992,6 +1038,7 @@ async function refresh() {
   const hasStaleSummary = renderGlobalSummary(state);
   const hasStaleValues = renderGroupedSections(entries);
   renderStaleNote(hasStaleSummary || hasStaleValues);
+  renderRunLog(state);
 }
 
 runAllButton.addEventListener('click', async () => {

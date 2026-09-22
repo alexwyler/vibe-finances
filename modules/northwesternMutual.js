@@ -7,22 +7,14 @@ export default {
     'https://plan.northwesternmutual.com/*'
   ],
   login: {
-    startUrl: 'https://www.northwesternmutual.com/',
+    startUrl: 'https://login.northwesternmutual.com/',
     timeoutMs: 10000,
-    preActions: [
-      {
-        type: 'click',
-        selector: '#nmx-login-open-button, button[aria-label="Open login modal"]',
-        waitFor: '#nmx-client-login-modal input[name="username"], #nmx-client-login-submit',
-        waitForVisible: true,
-        waitMs: 1000
-      }
-    ],
-    executionTimeoutMs: 20000,
+    executionTimeoutMs: 30000,
     submitStrategy: 'clickOnly',
     submitWithEnter: true,
+    submitProgressTimeoutMs: 10000,
     nativeLoginFlow: {
-      enabled: true,
+      enabled: false,
       activateTab: true,
       activationSettleMs: 250,
       initialStateTimeoutMs: 12000,
@@ -33,14 +25,19 @@ export default {
       progressTimeoutMs: 5000,
       focusPasswordBeforeEnter: true,
       methods: ['nativeClick', 'nativeEnter'],
-      usernameSelectors: '#nmx-client-login-modal input[name="username"], input[name="username"]',
-      passwordSelectors: '#nmx-client-login-modal input[name="password"], input[name="password"], input[type="password"]',
-      submitSelectors: '#nmx-client-login-submit, #nmx-client-login-modal button[type="submit"]'
+      usernameSelectors: '#username, input[name="username"]',
+      passwordSelectors: '#password, input[name="password"], input[type="password"]',
+      submitSelectors: '#login, button[type="submit"]'
+    },
+    nativeSubmitFallback: {
+      enabled: true,
+      activateTab: true,
+      methods: ['nativeClick', 'nativeEnter']
     },
     selectors: {
-      username: '#nmx-client-login-modal input[name="username"], input[name="username"]',
-      password: '#nmx-client-login-modal input[name="password"], input[name="password"], input[type="password"]',
-      submit: '#nmx-client-login-submit, #nmx-client-login-modal button[type="submit"], button[type="submit"]'
+      username: '#username, input[name="username"]',
+      password: '#password, input[name="password"], input[type="password"]',
+      submit: '#login, button[type="submit"]'
     },
     postSubmitWaitMs: 1500
   },
@@ -49,10 +46,11 @@ export default {
       id: 'netWorth',
       label: 'Net Worth',
       url: 'https://plan.northwesternmutual.com/net-worth',
+      scrapeRetries: 2,
       waitFor: {
         selector: 'table[data-test-id="product-table-investments"] td.text-right dt, table[data-test-id="product-table-life-insurance"] td.text-right dt, table[data-test-id="product-table-bank-accounts"] td.text-right dt',
-        timeoutMs: 20000,
-        settleMs: 500
+        timeoutMs: 45000,
+        settleMs: 3000
       },
       extractors: [
         {
@@ -88,9 +86,10 @@ export default {
       id: 'cashflow',
       label: 'Cash Flow',
       url: 'https://plan.northwesternmutual.com/cashflow',
+      scrapeRetries: 1,
       waitFor: {
         selector: 'button[data-test-id="month-selection-money-container"] h1, [data-test-id="month-selection-spending-container"] p.luna-type-header-55',
-        timeoutMs: 20000,
+        timeoutMs: 30000,
         settleMs: 500
       },
       extractors: [

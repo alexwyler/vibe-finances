@@ -1,6 +1,7 @@
 import { MODULES, getModuleById } from './lib/modules.js';
 import {
   appendHistorySnapshot,
+  appendRunLog,
   ensureState,
   getState,
   mergeResultValues,
@@ -21,6 +22,51 @@ function createProgressOptions(moduleId) {
   return {
     onPageResult: (partialResult) => enqueueStorageUpdate(() => mergeResultValues(moduleId, partialResult))
   };
+}
+
+function buildRunLogEntries(moduleId, result) {
+  const entries = [];
+  const displayName = result?.displayName || moduleId;
+
+  for (const page of result?.pages || []) {
+    const pageLabel = page.pageLabel || page.pageId || 'page';
+    if (page.ok) {
+      entries.push({
+        moduleId,
+        pageId: page.pageId || null,
+        level: 'info',
+        message: `${displayName} › ${pageLabel}: scraped successfully.`
+      });
+      continue;
+    }
+
+    const reason = page.error || page.message || 'Unknown failure.';
+    entries.push({
+      moduleId,
+      pageId: page.pageId || null,
+      level: 'error',
+      message: `${displayName} › ${pageLabel}: ${reason}`
+    });
+  }
+
+  if (result?.ok) {
+    const failedPages = (result.pages || []).filter((page) => page.ok === false).length;
+    entries.push({
+      moduleId,
+      level: failedPages ? 'error' : 'info',
+      message: failedPages
+        ? `${displayName}: finished with ${failedPages} failed page(s); values above may be stale (*).`
+        : `${displayName}: run succeeded.`
+    });
+  } else {
+    entries.push({
+      moduleId,
+      level: 'error',
+      message: `${displayName}: run failed — ${result?.error || 'no page produced values.'}`
+    });
+  }
+
+  return entries;
 }
 
 function moduleRequiresDebugger(module) {
@@ -73,6 +119,7 @@ async function runModuleAndPersist(moduleId, { saveSnapshot = true, preserveTabO
       finishedAt: result?.lastRunAt || new Date().toISOString(),
       error: result?.ok ? '' : (result?.error || 'Module failed.')
     });
+    await appendRunLog(buildRunLogEntries(moduleId, result));
     if (result?.ok && saveSnapshot) {
       await appendHistorySnapshot();
     }
@@ -121,6 +168,7 @@ async function runAllModulesAndPersist() {
         finishedAt: result?.lastRunAt || new Date().toISOString(),
         error: result?.ok ? '' : (result?.error || 'Module failed.')
       });
+      await appendRunLog(buildRunLogEntries(module.id, result));
     });
 
     return [module.id, result];

@@ -381,6 +381,45 @@ body.values-blurred .breakdown-chip-amount {
   color: #6c7a90;
 }
 
+.run-log {
+  margin-top: 12px;
+  background: white;
+  border-radius: 12px;
+  padding: 10px 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  font-size: 12px;
+}
+
+.run-log summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #1b2330;
+}
+
+.run-log-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.run-log-entry {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  color: #526076;
+}
+
+.run-log-entry.is-error .run-log-message {
+  color: #b42318;
+}
+
+.run-log-time {
+  color: #9aa7ba;
+  white-space: nowrap;
+}
+
 .ok {
   color: #0a7a36;
 }
