@@ -74,7 +74,9 @@ export default {
           // 'balance' only matches the balance-history chart (whose text starts with the
           // lowest Y-axis tick, e.g. $60,000); the real total lives on the PORTFOLIO TOTAL card.
           textIncludes: ['portfolio total'],
-          timeoutMs: 40000
+          timeoutMs: 40000,
+          // History recorded before the 2026-09-25 selector fix came from the chart, not the total.
+          historyInvalidBetween: ['2026-09-24T00:00:00-05:00', '2026-09-25T10:01:34-05:00']
         }
       ]
     }

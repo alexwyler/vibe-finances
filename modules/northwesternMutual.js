@@ -62,7 +62,9 @@ export default {
           // 'Alex Wyler' keeps this on the NM-owned Individual brokerage; linked external
           // accounts (e.g., Facebook Schwab) also have 'Individual' as their type.
           rowMatch: { textIncludes: ['Individual', 'Alex Wyler'] },
-          valueSelector: 'td.text-right dt'
+          valueSelector: 'td.text-right dt',
+          // History from 2026-09-24 until the 2026-09-25 fix captured the linked Schwab row.
+          historyInvalidBetween: ['2026-09-24T00:00:00-05:00', '2026-09-25T10:01:34-05:00']
         },
         {
           id: 'adjustableComplifeTotal',
