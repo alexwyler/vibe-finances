@@ -59,7 +59,9 @@ export default {
           kind: 'tableRowValue',
           tableSelector: 'table[data-test-id="product-table-investments"]',
           rowSelector: 'tbody tr',
-          rowMatch: { textIncludes: ['Individual'] },
+          // 'Alex Wyler' keeps this on the NM-owned Individual brokerage; linked external
+          // accounts (e.g., Facebook Schwab) also have 'Individual' as their type.
+          rowMatch: { textIncludes: ['Individual', 'Alex Wyler'] },
           valueSelector: 'td.text-right dt'
         },
         {
