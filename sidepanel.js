@@ -30,6 +30,7 @@ const SECTION_DEFINITIONS = [
     entryIds: [
       'wealthfrontBrokerage',
       'schwabTotalValue',
+      'fidelity401kBalance',
       'brokerageIndividual',
       'adjustableComplifeTotal'
     ]
@@ -58,6 +59,7 @@ const MONTHLY_ONLY_ENTRY_IDS = new Set([
 const INVESTMENT_PERCENT_ENTRY_IDS = new Set([
   'wealthfrontBrokerage',
   'schwabTotalValue',
+  'fidelity401kBalance',
   'brokerageIndividual',
   'adjustableComplifeTotal'
 ]);
