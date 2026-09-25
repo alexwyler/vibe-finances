@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Financial Institution Scraper",
-  "version": "0.1.9",
+  "version": "0.1.11",
   "description": "Log into supported financial institutions and scrape configured values into a side panel.",
   "permissions": ["storage", "scripting", "tabs", "sidePanel", "debugger"],
   "host_permissions": [
@@ -17,7 +17,10 @@
     "https://secure.bankofamerica.com/*",
     "https://www.chase.com/*",
     "https://secure.chase.com/*",
-    "https://*.chase.com/*"
+    "https://*.chase.com/*",
+    "https://nb.fidelity.com/*",
+    "https://workplaceservices.fidelity.com/*",
+    "https://*.fidelity.com/*"
   ],
   "background": {
     "service_worker": "service-worker.js",
