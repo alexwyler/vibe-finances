@@ -5,6 +5,7 @@ import {
   ensureState,
   getState,
   mergeResultValues,
+  purgeInvalidExtractorHistory,
   saveState,
   updateModuleRunStatus,
   updateResult
@@ -255,6 +256,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case 'RUN_ALL': {
         const results = await runAllModulesAndPersist();
         sendResponse({ ok: true, results });
+        return;
+      }
+      case 'PURGE_INVALID_HISTORY': {
+        await enqueueStorageUpdate(() => purgeInvalidExtractorHistory());
+        sendResponse({ ok: true });
         return;
       }
       default: {

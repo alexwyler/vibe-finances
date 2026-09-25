@@ -1087,4 +1087,5 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 });
 
 initializeBlurValuesToggle();
+chrome.runtime.sendMessage({ type: 'PURGE_INVALID_HISTORY' }).catch(() => {});
 refresh().catch((error) => setStatus(String(error), 'error'));
